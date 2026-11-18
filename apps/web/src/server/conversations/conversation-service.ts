@@ -12,7 +12,7 @@ import {
   type StoredMessage,
 } from "./conversation-repository";
 import { transition, type ConversationEvent } from "./conversation-state";
-import { InvalidTransitionError } from "./errors";
+import { ConversationNotFoundError, InvalidTransitionError, NotAssignedError } from "./errors";
 
 export class ConversationService {
   private readonly repo: ConversationRepository;
@@ -37,6 +37,22 @@ export class ConversationService {
 
   async appendMessage(conversationId: string, msg: NewMessage): Promise<string> {
     return this.repo.insertMessage(conversationId, msg);
+  }
+
+  findById(conversationId: string): Promise<ConversationRow | undefined> {
+    return this.repo.findById(conversationId);
+  }
+
+  // Mensagem do analista: só com a conversa em `analyst` e atribuída a quem envia.
+  // Estado diferente = InvalidTransitionError (409); outro responsável = NotAssignedError (403).
+  async appendAnalystMessage(conversationId: string, analystId: string, content: string): Promise<string> {
+    return this.db.transaction(async (tx) => {
+      const current = await this.repo.lockById(conversationId, tx);
+      if (!current) throw new ConversationNotFoundError();
+      if (current.state !== "analyst") throw new InvalidTransitionError("Assuma a conversa antes de responder.");
+      if (current.assignedAnalystId !== analystId) throw new NotAssignedError();
+      return this.repo.insertMessage(conversationId, { author: "analyst", authorId: analystId, content }, tx);
+    });
   }
 
   listMessages(conversationId: string): Promise<StoredMessage[]> {

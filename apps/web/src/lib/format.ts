@@ -45,3 +45,8 @@ export function summarizeValue(value: unknown, max = 140): string {
   const text = typeof value === "string" ? value : JSON.stringify(value);
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
+
+// Hora de hoje ("10:05") ou data curta ("16 out"), para a lista de conversas.
+export function formatListTime(iso: string, now: Date = new Date()): string {
+  return dayKeyFormat.format(new Date(iso)) === dayKeyFormat.format(now) ? formatTime(iso) : formatShortDate(iso);
+}

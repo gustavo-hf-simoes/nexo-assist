@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDue, formatShortDate, initialsOf } from "@/lib/format";
+import { formatDue, formatListTime, formatShortDate, initialsOf } from "@/lib/format";
 
 describe("format", () => {
   it("prazo no mesmo dia mostra só o horário em America/Sao_Paulo", () => {
@@ -14,5 +14,10 @@ describe("format", () => {
   it("iniciais", () => {
     expect(initialsOf("Ana Souza")).toBe("AS");
     expect(initialsOf("Rafael")).toBe("R");
+  });
+  it("lista: hora no mesmo dia, data curta em outro", () => {
+    const now = new Date("2026-11-18T14:00:00.000Z");
+    expect(formatListTime("2026-11-18T12:05:00.000Z", now)).toBe("09:05");
+    expect(formatListTime("2026-11-16T12:05:00.000Z", now)).toBe("16 nov");
   });
 });

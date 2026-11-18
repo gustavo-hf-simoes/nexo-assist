@@ -52,6 +52,12 @@ export class ConversationRepository {
     return row;
   }
 
+  // Trava a linha até o fim da transação: quem grava mensagem do analista confere estado e responsável sem corrida.
+  async lockById(id: string, ex: Executor): Promise<ConversationRow | undefined> {
+    const [row] = await ex.select().from(conversations).where(eq(conversations.id, id)).for("update");
+    return row;
+  }
+
   // Concorrência: só atualiza se o estado ainda for o esperado; devolve false em conflito.
   async updateState(
     id: string,

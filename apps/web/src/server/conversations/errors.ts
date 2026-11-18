@@ -11,3 +11,18 @@ export class QuotaExceededError extends Error {
     this.name = "QuotaExceededError";
   }
 }
+
+// A conversa está com outro analista: quem tenta agir nela não é o responsável.
+export class NotAssignedError extends Error {
+  constructor(message = "Esta conversa está com outro analista.") {
+    super(message);
+    this.name = "NotAssignedError";
+  }
+}
+
+export class ConversationNotFoundError extends Error {
+  constructor(message = "Conversa não encontrada.") {
+    super(message);
+    this.name = "ConversationNotFoundError";
+  }
+}

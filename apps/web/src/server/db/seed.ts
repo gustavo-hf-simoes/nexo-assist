@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { pathToFileURL } from "node:url";
 import { loadDbEnv } from "../config/db-env";
 import { createDb, type Database } from "./client";
-import { conversations, kbArticles, messages, users } from "./schema";
+import { conversations, decisionTraces, kbArticles, messages, users } from "./schema";
 
 type UserInsert = typeof users.$inferInsert;
 type ArticleInsert = typeof kbArticles.$inferInsert;
@@ -212,6 +212,34 @@ export function buildSeedConversations(now: Date): {
   };
 }
 
+// Por que o agent transferiu a conversa da Ana (aparece no console, em "Por que transferiu").
+export const SEED_HANDOFF_TRACE: typeof decisionTraces.$inferInsert = {
+  messageId: "7c2d8e10-5a4b-4f6c-8b21-000000000002",
+  intent: "handoff",
+  understanding: "Ana pergunta pelo INC-20311, parado há 5 dias, e quer falar com um analista.",
+  action: "Transferir para um analista",
+  confidence: 0.88,
+  rationale: "O chamado está acima do prazo de 3 dias úteis para prioridade média e a Ana pediu atendimento humano.",
+  tools: [
+    {
+      id: "get_ticket",
+      labels: ["consultou o INC-20311", "calculou o prazo"],
+      ok: true,
+      input: { code: "INC-20311" },
+      output: { ok: true, overdue: true, slaLabel: "3 dias úteis" },
+    },
+    {
+      id: "handoff_to_analyst",
+      labels: ["chamou um analista"],
+      ok: true,
+      input: { reason: "overdue" },
+      output: { ok: true },
+    },
+  ],
+  model: "seed",
+  latencyMs: 640,
+};
+
 export async function seedApp(db: Database, now: Date = new Date()): Promise<void> {
   await db
     .insert(users)
@@ -244,6 +272,7 @@ export async function seedApp(db: Database, now: Date = new Date()): Promise<voi
   const demo = buildSeedConversations(now);
   await db.insert(conversations).values(demo.conversations).onConflictDoNothing();
   await db.insert(messages).values(demo.messages).onConflictDoNothing();
+  await db.insert(decisionTraces).values(SEED_HANDOFF_TRACE).onConflictDoNothing();
 }
 
 async function main(): Promise<void> {

@@ -39,6 +39,29 @@ async function resetE2eUser(): Promise<void> {
   });
 }
 
+// Conversa da Ana do seed e as mensagens que o seed cria nela (a 2 tem o trace de "por que transferiu").
+const ANA_CONVERSATION_ID = "0b1f6a52-3c1e-4d7a-9a55-1d6f3e0a0001";
+const ANA_SEED_MESSAGE_IDS = [1, 2, 3].map((n) => `7c2d8e10-5a4b-4f6c-8b21-${String(n).padStart(12, "0")}`);
+export const ANALYST_USER_IDS = ["rafael.lima", "julia.castro"];
+
+// O console do analista assume, responde e devolve a conversa da Ana. Para o E2E rodar de novo no mesmo banco,
+// volta à Ana do seed: apaga mensagens e traces que o teste criou, restaura o estado e some com o responsável.
+async function resetAnaConversation(): Promise<void> {
+  await withClient(e2eEnv["APP_DATABASE_URL"] ?? "", async (db) => {
+    await db.query("BEGIN");
+    const extra = "SELECT id FROM messages WHERE conversation_id = $1 AND id <> ALL($2::uuid[])";
+    const args = [ANA_CONVERSATION_ID, ANA_SEED_MESSAGE_IDS];
+    await db.query(`DELETE FROM decision_traces WHERE message_id IN (${extra})`, args);
+    await db.query("DELETE FROM messages WHERE conversation_id = $1 AND id <> ALL($2::uuid[])", args);
+    await db.query(
+      "UPDATE conversations SET state = 'waiting_analyst', assigned_analyst_id = NULL, updated_at = now() - interval '28 hours' WHERE id = $1",
+      [ANA_CONVERSATION_ID],
+    );
+    await db.query("DELETE FROM auth_sessions WHERE user_id = ANY($1::text[])", [ANALYST_USER_IDS]);
+    await db.query("COMMIT");
+  });
+}
+
 // Migra e popula os dois bancos (idempotente), zera o usuário do E2E e só então os servidores sobem.
 export default async function globalSetup(): Promise<void> {
   for (const workspace of ["@nexo/tickets", "@nexo/web"]) {
@@ -47,4 +70,5 @@ export default async function globalSetup(): Promise<void> {
     }
   }
   await resetE2eUser();
+  await resetAnaConversation();
 }
