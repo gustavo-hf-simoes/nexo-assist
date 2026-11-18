@@ -35,6 +35,23 @@ describe("searchArticles (Postgres real)", () => {
     expect(results.some((r) => r.title.includes("Horário do service desk"))).toBe(true);
   });
 
+  it("termo negado exclui o artigo em vez de ampliar a busca", async () => {
+    const results = await searchArticles("vpn -erro", 10, db);
+    expect(results.map((r) => r.slug)).not.toContain("vpn-erro-809");
+    expect(results.length).toBeLessThan(8);
+  });
+
+  it("frase entre aspas continua sendo frase", async () => {
+    const results = await searchArticles('"erro 809"', 3, db);
+    expect(results[0]?.slug).toBe("vpn-erro-809");
+    expect(await searchArticles('"809 erro"', 3, db)).toEqual([]);
+  });
+
+  it("consulta vazia ou só de stopwords devolve lista vazia", async () => {
+    expect(await searchArticles("   ", 3, db)).toEqual([]);
+    expect(await searchArticles("de a o", 3, db)).toEqual([]);
+  });
+
   it("consulta sem correspondência devolve lista vazia", async () => {
     expect(await searchArticles("xyzzyqwerty", 3, db)).toEqual([]);
   });
