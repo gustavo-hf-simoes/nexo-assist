@@ -8,6 +8,13 @@
       "when": 1795012403763,
       "tag": "0000_thankful_starhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795012589889,
+      "tag": "0001_bright_wild_child",
+      "breakpoints": true
     }
   ]
 }

@@ -19,3 +19,11 @@ export class TicketNotResolvedError extends Error {
     this.name = "TicketNotResolvedError";
   }
 }
+
+// A chave de idempotência já pertence a outro solicitante; nenhum dado dele é devolvido.
+export class IdempotencyKeyConflictError extends Error {
+  constructor() {
+    super("Chave de idempotência já utilizada.");
+    this.name = "IdempotencyKeyConflictError";
+  }
+}

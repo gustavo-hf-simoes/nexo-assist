@@ -10,7 +10,12 @@ import {
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Database } from "./db/client";
 import { idempotencyKeys, ticketEvents, tickets, type TicketRow } from "./db/schema";
-import { ReopenWindowExpiredError, TicketNotFoundError, TicketNotResolvedError } from "./errors";
+import {
+  IdempotencyKeyConflictError,
+  ReopenWindowExpiredError,
+  TicketNotFoundError,
+  TicketNotResolvedError,
+} from "./errors";
 
 // O solicitante vem da identidade autenticada, nunca do corpo da requisição.
 export type NewTicket = CreateTicketInput & { requesterId: string };
@@ -99,7 +104,7 @@ export class DrizzleTicketRepository implements TicketRepository {
       // até o commit), nada é inserido e devolvemos o chamado original.
       const claimed = await tx
         .insert(idempotencyKeys)
-        .values({ key: idempotencyKey, ticketCode: code })
+        .values({ key: idempotencyKey, ticketCode: code, requesterId: input.requesterId })
         .onConflictDoNothing()
         .returning({ key: idempotencyKeys.key });
       if (claimed.length === 0) {
@@ -109,6 +114,9 @@ export class DrizzleTicketRepository implements TicketRepository {
           .innerJoin(tickets, eq(tickets.code, idempotencyKeys.ticketCode))
           .where(eq(idempotencyKeys.key, idempotencyKey));
         if (!existing) throw new Error("Chave de idempotência sem chamado associado.");
+        // Chave de outro solicitante: conflito, sem devolver dados do chamado alheio.
+        if (existing.ticket.requesterId !== input.requesterId)
+          throw new IdempotencyKeyConflictError();
         return { ticket: toDto(existing.ticket), replayed: true };
       }
 

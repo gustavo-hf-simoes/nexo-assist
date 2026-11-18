@@ -5,7 +5,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDb, type Database } from "../src/db/client";
 import { runMigrations } from "../src/db/migrate";
 import { idempotencyKeys, ticketEvents, tickets } from "../src/db/schema";
-import { ReopenWindowExpiredError, TicketNotFoundError } from "../src/errors";
+import {
+  IdempotencyKeyConflictError,
+  ReopenWindowExpiredError,
+  TicketNotFoundError,
+} from "../src/errors";
 import { seedTickets } from "../src/seed";
 import { DrizzleTicketRepository } from "../src/ticket-repository";
 
@@ -61,6 +65,14 @@ describe("TicketRepository (Postgres real)", () => {
         .from(idempotencyKeys)
         .where(eq(idempotencyKeys.key, "draft-1"));
       expect(keys).toHaveLength(1);
+    });
+
+    it("recusa a mesma chave vinda de outro usuário, sem vazar o chamado", async () => {
+      await repo.create(newTicket, "draft-shared");
+      const attempt = repo.create({ ...newTicket, requesterId: "carla.mendes" }, "draft-shared");
+      await expect(attempt).rejects.toBeInstanceOf(IdempotencyKeyConflictError);
+      const rows = await db.select().from(tickets).where(eq(tickets.title, newTicket.title));
+      expect(rows.filter((r) => r.requesterId === "carla.mendes")).toHaveLength(0);
     });
 
     it("duas confirmações concorrentes geram no máximo um chamado", async () => {

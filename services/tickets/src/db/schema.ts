@@ -52,13 +52,14 @@ export const ticketEvents = pgTable(
   },
   (t) => [
     index("ticket_events_ticket_idx").on(t.ticketCode),
-    uniqueIndex("ticket_events_idempotency_key_uq").on(t.idempotencyKey),
+    uniqueIndex("ticket_events_idempotency_key_uq").on(t.ticketCode, t.idempotencyKey),
   ],
 );
 
 export const idempotencyKeys = pgTable("idempotency_keys", {
   key: text("key").primaryKey(),
   ticketCode: text("ticket_code").notNull(),
+  requesterId: text("requester_id").notNull(),
   createdAt: timestamptz("created_at").notNull().default(sql`now()`),
 });
 
