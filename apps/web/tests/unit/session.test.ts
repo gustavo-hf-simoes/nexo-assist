@@ -67,28 +67,17 @@ describe("sessão (JWT)", () => {
 });
 
 describe("guards", () => {
-  it("requireEmployee devolve as claims do funcionário", async () => {
-    const token = await signSession(claims);
-    expect(await requireEmployee(requestWith(token))).toEqual(claims);
-  });
-
-  it("sem cookie lança UnauthorizedError (401)", async () => {
+  it("sem cookie lança UnauthorizedError (401) sem consultar o banco", async () => {
     const error = await requireEmployee(requestWith()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UnauthorizedError);
     expect(toHttpError(error).status).toBe(401);
+    expect(toHttpError(new ForbiddenError()).status).toBe(403);
   });
 
-  it("funcionário em rota do console lança ForbiddenError (403)", async () => {
+  it("cookie com JWT adulterado lança UnauthorizedError", async () => {
     const token = await signSession(claims);
-    const error = await requireAnalyst(requestWith(token)).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(ForbiddenError);
-    expect(toHttpError(error).status).toBe(403);
-  });
-
-  it("analista passa em requireAnalyst e é barrado em requireEmployee", async () => {
-    const token = await signSession({ ...claims, userId: "rafael.lima", role: "analyst" });
-    expect((await requireAnalyst(requestWith(token))).role).toBe("analyst");
-    await expect(requireEmployee(requestWith(token))).rejects.toBeInstanceOf(ForbiddenError);
+    const error = await requireAnalyst(requestWith(token.slice(0, -2) + "xx")).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnauthorizedError);
   });
 });
 

@@ -1,4 +1,5 @@
 import "server-only";
+import { eq } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
 import { z } from "zod";
 import { env } from "../config/env";
@@ -54,6 +55,12 @@ export async function createSession(
   });
 }
 
+// Logout: expira a linha no servidor (expires_at = agora); a linha fica para o histórico de mensagens.
+export async function revokeSession(sid: string, db: Database = getDb()): Promise<void> {
+  await db.update(authSessions).set({ expiresAt: new Date() }).where(eq(authSessions.id, sid));
+}
+
+// Só verifica o JWT (sem banco, para o proxy); quem autoriza de fato são os guards.
 export async function readSession(cookieValue: string | undefined): Promise<SessionClaims | null> {
   if (!cookieValue) return null;
   try {

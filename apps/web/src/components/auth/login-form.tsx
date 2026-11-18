@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
@@ -56,6 +57,7 @@ export function LoginForm() {
           E-mail corporativo
         </label>
         <div className={FIELD_BOX}>
+          <Mail aria-hidden="true" className="size-4 shrink-0 text-muted" />
           <input
             id="email"
             type="email"
@@ -76,6 +78,7 @@ export function LoginForm() {
           <span className="text-[13.5px] font-semibold text-brand-link">Esqueci minha senha</span>
         </div>
         <div className={FIELD_BOX}>
+          <LockKeyhole aria-hidden="true" className="size-4 shrink-0 text-muted" />
           <input
             id="password"
             type={showPassword ? "text" : "password"}
@@ -90,9 +93,9 @@ export function LoginForm() {
             onClick={() => setShowPassword((visible) => !visible)}
             aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
             aria-pressed={showPassword}
-            className="rounded-md px-2 py-1.5 text-[12.5px] font-semibold text-muted hover:text-ink"
+            className="flex size-[30px] items-center justify-center rounded-md text-muted hover:text-ink"
           >
-            {showPassword ? "Ocultar" : "Mostrar"}
+            {showPassword ? <EyeOff aria-hidden="true" className="size-4" /> : <Eye aria-hidden="true" className="size-4" />}
           </button>
         </div>
       </div>
@@ -102,8 +105,11 @@ export function LoginForm() {
           type="checkbox"
           checked={remember}
           onChange={(e) => setRemember(e.target.checked)}
-          className="size-[18px] cursor-pointer rounded-md accent-brand"
+          className="peer sr-only"
         />
+        <span className="flex size-[18px] items-center justify-center rounded-md border border-ink/25 bg-white text-white peer-checked:border-brand peer-checked:bg-brand peer-focus-visible:outline-2 peer-focus-visible:outline-brand">
+          {remember ? <Check aria-hidden="true" className="size-3" strokeWidth={3} /> : null}
+        </span>
         Manter conectado neste computador
       </label>
 
@@ -121,7 +127,12 @@ export function LoginForm() {
         disabled={loading}
         className="flex h-11 items-center justify-center gap-2 rounded-lg bg-brand text-[15.5px] font-semibold text-white shadow-[0_1px_2px_rgba(0,98,196,0.2),0_6px_16px_rgba(0,98,196,0.15)] transition-opacity hover:opacity-95 disabled:cursor-wait disabled:opacity-70"
       >
-        {loading ? "Entrando…" : "Entrar →"}
+        {loading ? "Entrando…" : (
+          <>
+            Entrar
+            <ArrowRight aria-hidden="true" className="size-4" />
+          </>
+        )}
       </button>
     </form>
   );
