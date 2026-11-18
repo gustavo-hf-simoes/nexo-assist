@@ -12,6 +12,9 @@ process.stdin.on("end", () => {
   let cmd = "";
   try { cmd = String(JSON.parse(raw).tool_input?.command ?? ""); } catch { return; }
 
+  // Texto que segue por pipe para um shell/eval é executado: não pode ser descartado.
+  const pipeRe = /\|\s*(?:sudo(?:\s+-\S+)*\s+)?(?:(?:ba|z|da)?sh|eval)(?=[\s)`;&\x27"]|$)/;
+
   // 1. Remove o corpo de heredocs (o texto entre <<X e a linha terminadora).
   const kept = [];
   let term = null;
@@ -22,14 +25,19 @@ process.stdin.on("end", () => {
     }
     kept.push(line);
     const m = line.match(/<<-?\s*[\x27"]?(\w+)[\x27"]?/);
-    if (m) term = m[1];
+    if (m && !pipeRe.test(line)) term = m[1];
   }
   let c = kept.join("\n");
+  const pipesToShell = pipeRe.test(c);
 
   // 2. bash -c "..." executa o texto: o conteúdo vira um comando a mais.
   const inner = [];
-  for (const m of c.matchAll(/\b(?:ba|z|da)?sh\s+-c\s+("(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)/g)) {
-    inner.push(m[1].slice(1, -1));
+  const subRe = /\$\((?:[^()]|\([^()]*\))*\)|`[^`]*`/g;
+  for (const m of c.matchAll(/\b(?:(?:ba|z|da)?sh\s+-c|eval)\s+("(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)/g)) {
+    const body = m[1].slice(1, -1);
+    inner.push(body);
+    // Aspas duplas externas expandem $(...) antes de o shell interno rodar.
+    if (m[1][0] === "\"") inner.push(...(body.match(subRe) ?? []));
   }
   c = c + "\n" + inner.join("\n");
 
@@ -40,15 +48,17 @@ process.stdin.on("end", () => {
     const subs = quoted.match(/\$\((?:[^()]|\([^()]*\))*\)|`[^`]*`/g) ?? [];
     return "\"\" " + subs.join(" ");
   };
-  c = c.replace(/\b(echo|printf)\b((?:\s+-\w+)*)\s+("(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)/g,
-    (_m, cmdName, _flags, q) => cmdName + " " + textOnly(q));
+  if (!pipesToShell) {
+    c = c.replace(/\b(echo|printf)\b((?:\s+-\w+)*)\s+("(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)/g,
+      (_m, cmdName, _flags, q) => cmdName + " " + textOnly(q));
+  }
   c = c.replace(/(\s(?:-m|--message)(?:\s+|=))("(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)/g,
     (_m, pre, q) => pre + textOnly(q));
 
   const has = (re) => re.test(c);
 
   // Arquivos .env: qualquer variante, exceto .env.example.
-  const envTok = /(^|[\s\/\x27"=<])\.env(?:\.(?!example(?:[\s\x27";&|)]|$))[\w.-]+)?(?=$|[\s\x27";&|)])/;
+  const envTok = /(^|[\s\/\x27"=<])\.env(?:\.(?!example(?:[\s\x27";&|)`]|$))[\w.-]+)?(?=$|[\s\x27";&|)`])/;
   const readers = /(?:^|[\s(`])(?:cat|less|more|head|tail|grep|egrep|fgrep|rg|sed|awk|cp|mv|source|type|bat|xxd|od|strings|node|python3?|base64|tac|nl|cut|sort|diff|tee|dd)(?=\s|$)|^\s*\(?\s*\.\s|\bgit\s+(?:add|stash|diff|show|log|blame)(?=\s|$)/;
   for (const seg of c.split(/[;&|\n]+/)) {
     if (/<\s*\S*\.env/.test(seg) && envTok.test(seg.replace(/<\s*/, " "))) { console.log("acesso a arquivos .env (use o .env.example)"); return; }
@@ -56,7 +66,7 @@ process.stdin.on("end", () => {
   }
 
   // Download seguido de execução.
-  if (has(/\b(curl|wget|iwr|Invoke-WebRequest)\b[^|\n;&]*\|\s*(sudo(\s+-\S+)*\s+)?(ba|z|da)?sh(?=[\s)`;&]|$)/) ||
+  if (has(/\b(curl|wget|iwr|Invoke-WebRequest)\b[^|\n;&]*\|\s*(sudo(\s+-\S+)*\s+)?(ba|z|da)?sh(?=[\s)`;&\x27"]|$)/) ||
       has(/\b(ba|z|da)?sh\s+<\(\s*(curl|wget)\b/) ||
       has(/\b(ba|z|da)?sh\s+-c\s+["\x27]?\$\(\s*(curl|wget)\b/)) {
     console.log("download com pipe para shell"); return;
