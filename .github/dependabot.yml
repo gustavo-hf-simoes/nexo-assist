@@ -1,0 +1,39 @@
+# Atualização semanal de dependências; minor e patch agrupados, major em PR separado.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: chore
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  # Só o serviço de chamados tem Dockerfile (o web não).
+  - package-ecosystem: docker
+    directory: /services/tickets
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: chore
+    groups:
+      docker-minor-patch:
+        update-types: [minor, patch]
