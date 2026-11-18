@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
       // 'server-only' lança fora do bundler do Next; nos testes vira um módulo vazio.
       "server-only": fileURLToPath(new URL("./tests/stubs/server-only.ts", import.meta.url)),
     },
