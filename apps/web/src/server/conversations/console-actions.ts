@@ -3,6 +3,7 @@ import { toHttpError } from "../errors";
 import { requireAnalyst } from "../auth/guards";
 import type { SessionClaims } from "../auth/session";
 import { ConversationService } from "./conversation-service";
+import type { ConversationRow } from "./conversation-repository";
 import { ConversationNotFoundError, InvalidTransitionError, NotAssignedError } from "./errors";
 import type { ConversationEvent } from "./conversation-state";
 import { getDb } from "../db/app-db";
@@ -13,9 +14,9 @@ const IdSchema = z.string().uuid();
 
 // Mapa de erros do console: transição inválida/estado mudou = 409; outro responsável = 403; inexistente = 404.
 export function consoleErrorResponse(error: unknown): Response {
+  if (error instanceof ConversationNotFoundError) return Response.json({ error: error.message }, { status: 404 });
   if (error instanceof InvalidTransitionError) return Response.json({ error: error.message }, { status: 409 });
   if (error instanceof NotAssignedError) return Response.json({ error: error.message }, { status: 403 });
-  if (error instanceof ConversationNotFoundError) return Response.json({ error: error.message }, { status: 404 });
   console.error("[api/console]", error instanceof Error ? error.message : "erro desconhecido");
   return Response.json({ error: "Erro interno." }, { status: 500 });
 }
@@ -41,21 +42,26 @@ export async function handleConsoleRoute(
   }
 }
 
-// Assumir, devolver ao agent e encerrar. Em conversa que outro analista já assumiu, só o responsável age (403);
-// a transição em si é protegida por UPDATE condicional (409 se o estado mudou no meio).
+// Regra de posse (conferida dentro da transação da transição, com a linha travada):
+// - `analyst`: só o responsável devolve ou encerra (outro analista recebe 403);
+// - `waiting_analyst`: ninguém é dono ainda, qualquer analista pode devolver, encerrar ou assumir;
+// - `agent`: o console pode encerrar (devolver não faz sentido e dá 409 pela máquina de estados);
+// - `closed`: 409 pela máquina de estados.
+// Assumir em `analyst` também é 409 (a transição não existe), inclusive para o segundo analista.
+export function ownerRule(analystId: string, event: ConversationEvent): (current: ConversationRow) => void {
+  return (current) => {
+    if (event.type === "assume") return;
+    if (current.state === "analyst" && current.assignedAnalystId !== analystId) throw new NotAssignedError();
+  };
+}
+
 export async function runConsoleEvent(
   conversationId: string,
   analystId: string,
   build: (analystId: string) => ConversationEvent,
   db = getDb(),
 ): Promise<Response> {
-  const service = new ConversationService(db);
-  const current = await service.findById(conversationId);
-  if (!current) throw new ConversationNotFoundError();
   const event = build(analystId);
-  if (event.type !== "assume" && current.state === "analyst" && current.assignedAnalystId !== analystId) {
-    throw new NotAssignedError();
-  }
-  const updated = await service.apply(conversationId, event);
+  const updated = await new ConversationService(db).apply(conversationId, event, ownerRule(analystId, event));
   return Response.json({ state: updated.state, assignedAnalystId: updated.assignedAnalystId });
 }

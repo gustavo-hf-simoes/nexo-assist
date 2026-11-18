@@ -20,7 +20,8 @@ export class NotAssignedError extends Error {
   }
 }
 
-export class ConversationNotFoundError extends Error {
+// Subclasse de InvalidTransitionError: quem já tratava a transição inválida continua funcionando.
+export class ConversationNotFoundError extends InvalidTransitionError {
   constructor(message = "Conversa não encontrada.") {
     super(message);
     this.name = "ConversationNotFoundError";

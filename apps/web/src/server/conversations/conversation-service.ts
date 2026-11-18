@@ -60,10 +60,16 @@ export class ConversationService {
   }
 
   // Muda o estado e grava a mensagem de sistema na mesma transação.
-  async apply(conversationId: string, event: ConversationEvent): Promise<ConversationRow> {
+  // A linha fica travada (FOR UPDATE) até o fim; `authorize` roda sobre o estado travado, sem janela entre checar e gravar.
+  async apply(
+    conversationId: string,
+    event: ConversationEvent,
+    authorize?: (current: ConversationRow) => void,
+  ): Promise<ConversationRow> {
     return this.db.transaction(async (tx) => {
-      const current = await this.repo.findById(conversationId, tx);
-      if (!current) throw new InvalidTransitionError("Conversa não encontrada.");
+      const current = await this.repo.lockById(conversationId, tx);
+      if (!current) throw new ConversationNotFoundError();
+      authorize?.(current);
       const next = transition(current.state, event);
       const patch = this.patchFor(event);
       const updated = await this.repo.updateState(conversationId, current.state, next, patch, tx);

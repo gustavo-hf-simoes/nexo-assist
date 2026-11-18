@@ -211,6 +211,63 @@ describe("API do console do analista (Postgres real)", () => {
     expect((await call(close.POST, tokens.julia, ANA_CONV)).status).toBe(403);
   });
 
+  describe("posse na transição (regra: analyst = só o responsável; waiting_analyst = qualquer um; agent = pode encerrar)", () => {
+    const setState = (id: string, state: "agent" | "waiting_analyst" | "analyst" | "closed", assigned: string | null) =>
+      db.update(conversations).set({ state, assignedAnalystId: assigned }).where(eq(conversations.id, id));
+
+    it("analyst: o responsável devolve e encerra; outro analista leva 403 e nada muda", async () => {
+      await setState(ANA_CONV, "analyst", "rafael.lima");
+      expect((await call(giveBack.POST, tokens.julia, ANA_CONV)).status).toBe(403);
+      expect((await call(close.POST, tokens.julia, ANA_CONV)).status).toBe(403);
+      expect(await rowOf(ANA_CONV)).toMatchObject({ state: "analyst", assignedAnalystId: "rafael.lima" });
+      expect((await call(close.POST, tokens.rafael, ANA_CONV)).status).toBe(200);
+    });
+
+    it("waiting_analyst: qualquer analista devolve ou encerra", async () => {
+      expect((await call(close.POST, tokens.julia, ANA_CONV)).status).toBe(200);
+      await setState(ANA_CONV, "waiting_analyst", null);
+      expect((await call(giveBack.POST, tokens.julia, ANA_CONV)).status).toBe(200);
+      expect((await rowOf(ANA_CONV))?.state).toBe("agent");
+    });
+
+    it("agent: o console pode encerrar; devolver vira 409", async () => {
+      expect((await call(giveBack.POST, tokens.julia, CARLA_CONV)).status).toBe(409);
+      expect((await call(close.POST, tokens.julia, CARLA_CONV)).status).toBe(200);
+      expect((await rowOf(CARLA_CONV))?.state).toBe("closed");
+    });
+
+    // Reproduz a janela: a linha fica travada por outra transação; a chamada da Júlia espera no lock enquanto o
+    // Rafael assume (e commita). Quando a da Júlia prossegue, enxerga o estado novo e é recusada.
+    async function interleaved(run: Handler) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT 1 FROM conversations WHERE id = $1 FOR UPDATE", [ANA_CONV]);
+        const pending = call(run, tokens.julia, ANA_CONV);
+        for (let i = 0; i < 100; i++) {
+          const waiting = await client.query("SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock'");
+          if (waiting.rowCount) break;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        await client.query("UPDATE conversations SET state = 'analyst', assigned_analyst_id = 'rafael.lima' WHERE id = $1", [ANA_CONV]);
+        await client.query("COMMIT");
+        return await pending;
+      } finally {
+        client.release();
+      }
+    }
+
+    it("o Rafael assume entre a leitura e a transição: return da Júlia é recusado (403)", async () => {
+      expect((await interleaved(giveBack.POST)).status).toBe(403);
+      expect(await rowOf(ANA_CONV)).toMatchObject({ state: "analyst", assignedAnalystId: "rafael.lima" });
+    });
+
+    it("o Rafael assume entre a leitura e a transição: close da Júlia é recusado (403)", async () => {
+      expect((await interleaved(close.POST)).status).toBe(403);
+      expect(await rowOf(ANA_CONV)).toMatchObject({ state: "analyst", assignedAnalystId: "rafael.lima" });
+    });
+  });
+
   it("close muda para closed e grava a mensagem de sistema; fechar de novo vira 409", async () => {
     await call(assume.POST, tokens.rafael, ANA_CONV);
     expect((await call(close.POST, tokens.rafael, ANA_CONV)).status).toBe(200);
