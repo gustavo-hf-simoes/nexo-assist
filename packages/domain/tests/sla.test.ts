@@ -32,6 +32,13 @@ describe("computeDueAt", () => {
   });
 });
 
+describe("computeDueAt com segundos no início", () => {
+  it("Alta aberta às 14:00:20 não ultrapassa as 18:00 do mesmo dia", () => {
+    const from = new TZDate(2026, 10, 18, 14, 0, 20, TZ);
+    expect(computeDueAt("alta", from).getTime()).toBe(at(19, 8, 1).getTime());
+  });
+});
+
 describe("slaLabel", () => {
   it("descreve cada prazo", () => {
     expect(slaLabel("critica")).toBe("1 hora");

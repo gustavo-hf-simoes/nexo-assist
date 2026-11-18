@@ -43,7 +43,7 @@ function addBusinessHours(from: Date, hours: number): Date {
   let cursor = nextBusinessInstant(new TZDate(from.getTime(), BUSINESS_TIME_ZONE));
   let remaining = hours * 60;
   for (;;) {
-    const available = Math.round((atHour(cursor, BUSINESS_END_HOUR).getTime() - cursor.getTime()) / MINUTE_MS);
+    const available = Math.floor((atHour(cursor, BUSINESS_END_HOUR).getTime() - cursor.getTime()) / MINUTE_MS);
     if (remaining <= available) {
       return new Date(cursor.getTime() + remaining * MINUTE_MS);
     }
