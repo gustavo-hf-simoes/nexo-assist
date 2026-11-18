@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import type { Database } from "../db/client";
 import { isUniqueViolation } from "../db/pg-errors";
 import { ticketDrafts } from "../db/schema";
@@ -69,8 +69,27 @@ export class DraftRepository {
   ): Promise<DraftRow | null> {
     const [row] = await this.db
       .update(ticketDrafts)
-      .set({ status: to })
+      .set({ status: to, ...(to === "confirming" ? { confirmingSince: new Date() } : {}) })
       .where(and(eq(ticketDrafts.id, id), eq(ticketDrafts.employeeId, employeeId), eq(ticketDrafts.status, "pending")))
+      .returning();
+    return row ? asRow(row) : null;
+  }
+
+  // Retoma um rascunho preso em `confirming` há mais de `staleMs` (UPDATE ... RETURNING atômico: só um
+  // retry ganha). Devolve o rascunho para reenviar com a mesma Idempotency-Key.
+  async reclaimStaleConfirming(id: string, employeeId: string, staleMs: number): Promise<DraftRow | null> {
+    const now = new Date();
+    const [row] = await this.db
+      .update(ticketDrafts)
+      .set({ confirmingSince: now })
+      .where(
+        and(
+          eq(ticketDrafts.id, id),
+          eq(ticketDrafts.employeeId, employeeId),
+          eq(ticketDrafts.status, "confirming"),
+          lt(ticketDrafts.confirmingSince, new Date(now.getTime() - staleMs)),
+        ),
+      )
       .returning();
     return row ? asRow(row) : null;
   }

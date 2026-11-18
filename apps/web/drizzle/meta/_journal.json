@@ -15,6 +15,13 @@
       "when": 1795018175346,
       "tag": "0001_one_open_conversation",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795031077896,
+      "tag": "0002_draft_confirming_since",
+      "breakpoints": true
     }
   ]
 }

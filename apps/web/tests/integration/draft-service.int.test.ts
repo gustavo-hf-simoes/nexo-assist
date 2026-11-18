@@ -153,6 +153,32 @@ describe("rascunhos de chamado (Postgres real, gateway falso)", () => {
     expect(gateway.createCalls.map((c) => c.idempotencyKey)).toEqual([draft.id, draft.id]);
   });
 
+  it("rascunho preso em confirming (crash) é retomado com a mesma chave e não duplica o chamado", async () => {
+    const draft = await newDraft();
+    // O envio chegou ao serviço, mas o processo morreu antes de finishConfirming.
+    const first = await gateway.create(
+      "ana.souza",
+      { title: payload().title, description: payload().description, type: "INC", category: "Hardware", affected: "individual", blocksWork: false, sameDayDeadline: false },
+      draft.id,
+    );
+    const longAgo = new Date(Date.now() - 5 * 60_000);
+    await db.update(ticketDrafts).set({ status: "confirming", confirmingSince: longAgo }).where(eq(ticketDrafts.id, draft.id));
+
+    const { ticket } = await service.confirm(draft.id, "ana.souza");
+    expect(ticket.code).toBe(first.code);
+    expect(gateway.tickets.filter((t) => t.title === payload().title)).toHaveLength(1);
+    expect(gateway.createCalls.map((c) => c.idempotencyKey)).toEqual([draft.id, draft.id]);
+    const [row] = await db.select().from(ticketDrafts).where(eq(ticketDrafts.id, draft.id));
+    expect(row).toMatchObject({ status: "confirmed", ticketCode: first.code });
+  });
+
+  it("confirming recente (envio em andamento) não é retomado: DraftNotPendingError", async () => {
+    const draft = await newDraft();
+    await db.update(ticketDrafts).set({ status: "confirming", confirmingSince: new Date() }).where(eq(ticketDrafts.id, draft.id));
+    await expect(service.confirm(draft.id, "ana.souza")).rejects.toBeInstanceOf(DraftNotPendingError);
+    await expect(service.confirm(draft.id, "carla.mendes")).rejects.toBeInstanceOf(DraftNotFoundError);
+  });
+
   it("outro erro do gateway marca o rascunho como failed", async () => {
     const draft = await newDraft();
     gateway.failCreateWith = new Error("boom");

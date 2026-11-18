@@ -1,0 +1,1 @@
+ALTER TABLE "ticket_drafts" ADD COLUMN "confirming_since" timestamp with time zone;

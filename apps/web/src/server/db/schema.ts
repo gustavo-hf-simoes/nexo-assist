@@ -115,6 +115,8 @@ export const ticketDrafts = pgTable(
       .notNull()
       .default("pending"),
     ticketCode: text("ticket_code"),
+    // Quando entrou em `confirming`; permite retomar uma confirmação que ficou presa (crash/erro).
+    confirmingSince: timestamp("confirming_since", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index("ticket_drafts_conversation_idx").on(t.conversationId)],

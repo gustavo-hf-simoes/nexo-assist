@@ -14,6 +14,9 @@ export interface DraftConversations {
   apply(conversationId: string, event: ConversationEvent): Promise<unknown>;
 }
 
+// Depois deste tempo em `confirming`, o confirm seguinte retoma o envio (mesma Idempotency-Key).
+export const STALE_CONFIRMING_MS = 30_000;
+
 export class DraftService {
   private readonly repo: DraftRepository;
 
@@ -21,6 +24,7 @@ export class DraftService {
     db: Database,
     private readonly gateway: TicketGateway,
     private readonly conversations: DraftConversations,
+    private readonly staleConfirmingMs: number = STALE_CONFIRMING_MS,
   ) {
     this.repo = new DraftRepository(db);
   }
@@ -41,7 +45,9 @@ export class DraftService {
   }
 
   async confirm(draftId: string, employeeId: string): Promise<{ ticket: TicketDto; handoff?: HandoffReason }> {
-    const draft = await this.repo.transitionFromPending(draftId, employeeId, "confirming");
+    const draft =
+      (await this.repo.transitionFromPending(draftId, employeeId, "confirming")) ??
+      (await this.repo.reclaimStaleConfirming(draftId, employeeId, this.staleConfirmingMs));
     if (!draft) throw await this.whyNotPending(draftId, employeeId);
 
     let ticket: TicketDto;
