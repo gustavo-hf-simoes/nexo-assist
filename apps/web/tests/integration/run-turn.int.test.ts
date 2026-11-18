@@ -83,15 +83,27 @@ describe("turno do agent (Postgres real, modelo roteirizado)", () => {
   const stateOf = async (id: string) =>
     (await db.select().from(conversations).where(eq(conversations.id, id)))[0]?.state;
 
-  it("conversa em waiting_analyst: paused, grava a mensagem, 0 chamadas ao modelo e não consome a cota", async () => {
+  it("conversa em waiting_analyst: paused, grava a mensagem, 0 chamadas ao modelo e consome a cota da sessão", async () => {
     const conv = await current();
     await new ConversationService(db).apply(conv.id, { type: "handoff", reason: "user_request", summary: "x" });
     const { result } = await run("alguém aí?", [{ text: "não deveria rodar" }]);
     expect(result).toEqual({ kind: "paused", state: "waiting_analyst" });
     expect(scriptedCallCount()).toBe(0);
-    expect(await usedOf()).toBe(0);
+    expect(await usedOf()).toBe(1);
+    expect((await db.select().from(dailyUsage))[0]?.llmTurns ?? 0).toBe(0);
     const rows = await rowsOf(conv.id);
     expect(rows.filter((r) => r.author === "employee").map((r) => r.content)).toEqual(["alguém aí?"]);
+  });
+
+  it("conversa pausada com 30 mensagens usadas: quota_exceeded e a mensagem não é gravada", async () => {
+    const conv = await current();
+    await new ConversationService(db).apply(conv.id, { type: "handoff", reason: "user_request", summary: "x" });
+    await db.update(authSessions).set({ messagesSent: 30 }).where(eq(authSessions.id, sid));
+    const { result } = await run("mais uma", [{ text: "não deveria rodar" }]);
+    expect(result).toEqual({ kind: "quota_exceeded", used: 30, limit: 30 });
+    expect(await usedOf()).toBe(30);
+    const rows = await rowsOf(conv.id);
+    expect(rows.filter((r) => r.author === "employee")).toEqual([]);
   });
 
   it("com 30 mensagens usadas: quota_exceeded, sem chamar o modelo e sem gastar o limite diário", async () => {

@@ -173,9 +173,21 @@ export async function runTurn(
   const { session, text } = input;
   const conversation: ConversationRow = await deps.conversations.getOrCreateCurrent(session.userId);
 
-  // 1. Fora do estado agent o assistente não responde: só guarda a mensagem.
+  // 1. Fora do estado agent o assistente não responde: só guarda a mensagem. A cota da sessão vale
+  // também aqui (o limite diário de LLM não, pois o modelo não roda).
   if (conversation.state !== "agent") {
-    await deps.conversations.appendMessage(conversation.id, { author: "employee", authorId: session.userId, content: text });
+    try {
+      await deps.quota.consume(session.sid);
+    } catch (error) {
+      if (error instanceof QuotaExceededError) return { kind: "quota_exceeded", ...(await deps.quota.peek(session.sid)) };
+      throw error;
+    }
+    try {
+      await deps.conversations.appendMessage(conversation.id, { author: "employee", authorId: session.userId, content: text });
+    } catch (error) {
+      await Promise.allSettled([deps.quota.refund(session.sid)]);
+      throw error;
+    }
     return { kind: "paused", state: conversation.state };
   }
 
