@@ -10,7 +10,7 @@ import { seedApp } from "../../src/server/db/seed";
 import { DraftService } from "../../src/server/drafts/draft-service";
 import type { DraftPayload, NewDraftInput } from "../../src/server/drafts/draft-types";
 import { DraftNotFoundError, DraftNotPendingError } from "../../src/server/drafts/errors";
-import { TicketServiceUnavailableError } from "../../src/server/tickets/ticket-errors";
+import { TicketConflictError, TicketServiceUnavailableError } from "../../src/server/tickets/ticket-errors";
 import { FakeTicketGateway } from "../fakes/fake-ticket-gateway";
 
 describe("rascunhos de chamado (Postgres real, gateway falso)", () => {
@@ -183,6 +183,14 @@ describe("rascunhos de chamado (Postgres real, gateway falso)", () => {
     const draft = await newDraft();
     gateway.failCreateWith = new Error("boom");
     await expect(service.confirm(draft.id, "ana.souza")).rejects.toThrow("boom");
+    const [row] = await db.select().from(ticketDrafts).where(eq(ticketDrafts.id, draft.id));
+    expect(row?.status).toBe("failed");
+  });
+
+  it("conflito do serviço de chamados propaga o erro e deixa o rascunho failed", async () => {
+    const draft = await newDraft();
+    gateway.failCreateWith = new TicketConflictError("reopen_window_expired");
+    await expect(service.confirm(draft.id, "ana.souza")).rejects.toBeInstanceOf(TicketConflictError);
     const [row] = await db.select().from(ticketDrafts).where(eq(ticketDrafts.id, draft.id));
     expect(row?.status).toBe("failed");
   });

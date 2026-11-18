@@ -1,7 +1,13 @@
 import type { TicketDto } from "@nexo/domain";
 import type { ConversationService } from "../conversations/conversation-service";
 import type { HandoffReason } from "../conversations/conversation-state";
-import { TicketServiceUnavailableError } from "../tickets/ticket-errors";
+import {
+  TicketConflictError,
+  TicketNotFoundError,
+  TicketRequestError,
+  TicketServiceUnavailableError,
+  type TicketConflictCode,
+} from "../tickets/ticket-errors";
 import type { TicketGateway } from "../tickets/ticket-gateway";
 import type { DraftService } from "./draft-service";
 import { DraftNotFoundError, DraftNotPendingError } from "./errors";
@@ -53,10 +59,24 @@ export async function confirmDraft(
   return result;
 }
 
+const CONFLICT_TEXT: Record<TicketConflictCode, string> = {
+  reopen_window_expired: "O prazo de 7 dias para reabrir este chamado terminou. Posso abrir um novo chamado para você.",
+  not_resolved: "Este chamado não está resolvido, então não dá para reabri-lo. Posso acrescentar uma atualização a ele.",
+  idempotency_conflict: "Esta confirmação conflita com outra já registrada. Peça um novo rascunho e confirme de novo.",
+};
+
 // Mapeia os erros dos rascunhos para respostas HTTP em pt-BR; undefined se o erro não for conhecido.
 export function draftErrorResponse(error: unknown): Response | undefined {
   if (error instanceof DraftNotPendingError) return Response.json({ error: error.message }, { status: 409 });
   if (error instanceof DraftNotFoundError) return Response.json({ error: error.message }, { status: 404 });
+  if (error instanceof TicketConflictError) return Response.json({ error: CONFLICT_TEXT[error.code] }, { status: 409 });
+  if (error instanceof TicketNotFoundError) return Response.json({ error: "Chamado não encontrado." }, { status: 404 });
+  if (error instanceof TicketRequestError) {
+    return Response.json(
+      { error: "O serviço de chamados não aceitou esta solicitação. Revise os dados e peça um novo rascunho." },
+      { status: 422 },
+    );
+  }
   if (error instanceof TicketServiceUnavailableError) {
     return Response.json(
       { error: "O serviço de chamados está indisponível no momento. Tente confirmar novamente em instantes." },
