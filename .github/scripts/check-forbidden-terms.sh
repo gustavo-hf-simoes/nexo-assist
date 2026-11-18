@@ -14,10 +14,16 @@ for item in "${encoded[@]}"; do
   [ -z "$item" ] && continue
   term="$(printf '%s' "$item" | base64 -d 2>/dev/null)"
   [ -z "$term" ] && continue
-  if git grep -i -n -I -F -e "$term" -- . ':(exclude).superpowers' ':(exclude)package-lock.json' >/dev/null 2>&1; then
+  matches="$(git grep -i -n -I -F -e "$term" -- . ':(exclude).superpowers' ':(exclude)package-lock.json' 2>&1)"
+  status=$?
+  if [ "$status" -eq 0 ]; then
     echo "Termo proibido encontrado (item base64: $item):" >&2
-    git grep -i -n -I -F -e "$term" -- . ':(exclude).superpowers' ':(exclude)package-lock.json' >&2
+    echo "$matches" >&2
     found=1
+  elif [ "$status" -ne 1 ]; then
+    echo "git grep falhou (exit $status):" >&2
+    echo "$matches" >&2
+    exit 2
   fi
 done
 
