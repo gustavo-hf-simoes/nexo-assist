@@ -111,6 +111,9 @@ jobs:
           npm run db:migrate
           npm run db:seed
 
+      - name: Instalar o Chromium do Playwright
+        run: npx playwright install --with-deps chromium
+
       - name: Rodar o Playwright
         run: npm run e2e
 

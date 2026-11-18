@@ -10,7 +10,12 @@
   --color-brand: #0062c4;
   --color-brand-link: #0069c7;
   --color-ok: #00bd6c;
+  --color-ok-ink: #00804a;
   --color-warn: #f5a500;
+  --color-warn-ink: #946300;
+  --color-danger: #c4161d;
+  --color-brand-tint: #e6effa;
+  --color-brand-bright: #0285f7;
   --font-sans: var(--font-schibsted), system-ui, sans-serif;
   --font-serif: var(--font-newsreader), system-ui, sans-serif;
 }

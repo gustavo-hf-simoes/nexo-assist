@@ -17,10 +17,12 @@ export async function proxy(request: NextRequest) {
   const home = homeFor(claims.role);
   if (pathname === "/" || pathname === "/login") return redirectTo(home);
   if (pathname.startsWith("/console") && claims.role !== "analyst") return redirectTo(home);
-  if (pathname.startsWith("/atendimento") && claims.role !== "employee") return redirectTo(home);
+  if ((pathname.startsWith("/atendimento") || pathname.startsWith("/perfil")) && claims.role !== "employee") {
+    return redirectTo(home);
+  }
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/", "/login", "/atendimento/:path*", "/console/:path*"],
+  matcher: ["/", "/login", "/atendimento/:path*", "/perfil/:path*", "/console/:path*"],
 };

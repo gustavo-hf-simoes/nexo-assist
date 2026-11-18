@@ -19,7 +19,8 @@ const USAGE = {
   outputTokens: { total: 1, text: 1, reasoning: undefined },
 };
 
-let script: ScriptStep[] = [];
+// null = nenhum setScript: vale o roteiro padrão (por texto do usuário), usado pelo E2E.
+let script: ScriptStep[] | null = null;
 let calls = 0;
 
 export function setScript(steps: ScriptStep[]): void {
@@ -30,6 +31,97 @@ export function setScript(steps: ScriptStep[]): void {
 // Quantas vezes o modelo roteirizado foi chamado desde o último setScript.
 export function scriptedCallCount(): number {
   return calls;
+}
+
+export const VPN_TRIGGER = "Meu notebook não conecta na VPN, erro 809";
+
+type PromptMessage = { role: string; content: unknown };
+
+function lastUserText(prompt: readonly PromptMessage[]): string {
+  for (let i = prompt.length - 1; i >= 0; i -= 1) {
+    const message = prompt[i];
+    if (message?.role !== "user") continue;
+    const content = message.content;
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return (content as Array<{ type?: string; text?: string }>)
+        .filter((p) => p.type === "text" && typeof p.text === "string")
+        .map((p) => p.text)
+        .join("\n");
+    }
+  }
+  return "";
+}
+
+// Resultados de tool já devolvidos neste turno (depois da última mensagem do usuário).
+function turnToolResults(prompt: readonly PromptMessage[]): PromptMessage[] {
+  let lastUser = -1;
+  prompt.forEach((m, i) => {
+    if (m.role === "user") lastUser = i;
+  });
+  return prompt.slice(lastUser + 1).filter((m) => m.role === "tool");
+}
+
+const DECISION_FALLBACK = {
+  intent: "smalltalk",
+  understanding: "Mensagem fora do roteiro de demonstração.",
+  action: "Responder de forma simples",
+  confidence: 0.9,
+  rationale: "Roteiro padrão do modelo de teste.",
+};
+
+// Roteiro padrão: decide o próximo passo pelo texto do usuário e pelas tools já executadas no turno.
+export function defaultStep(prompt: readonly PromptMessage[]): Exclude<ScriptStep, { error: string }> {
+  const text = lastUserText(prompt);
+  const results = turnToolResults(prompt);
+  const done = results.length;
+  if (text.trim() !== VPN_TRIGGER) {
+    return done === 0
+      ? { toolCalls: [{ name: "record_decision", input: DECISION_FALLBACK }] }
+      : { text: "Olá! Sou o assistente de TI da Nexo. Descreva o problema e eu abro o chamado para você." };
+  }
+  if (done === 0) return { toolCalls: [{ name: "search_my_tickets", input: { scope: "open" } }] };
+  if (done === 1) return { toolCalls: [{ name: "search_help_center", input: { query: "vpn erro 809" } }] };
+  if (done === 2) {
+    // Chamados já abertos aparecem no resultado da busca: não os trate como duplicata em reexecuções.
+    const codes = [...new Set(JSON.stringify(results).match(/(?:INC|REQ)-\d+/g) ?? [])];
+    return {
+      toolCalls: [
+        {
+          name: "prepare_ticket_draft",
+          input: {
+            kind: "create",
+            title: "VPN não conecta no notebook — erro 809",
+            description: "O notebook não conecta na VPN e exibe o erro 809 desde hoje.",
+            type: "INC",
+            category: "Rede e VPN",
+            impact: "individual",
+            blocksWork: true,
+            sameDayDeadline: false,
+            affectedLabel: "Somente você",
+            notDuplicateOf: codes,
+          },
+        },
+      ],
+    };
+  }
+  if (done === 3) {
+    return {
+      toolCalls: [
+        {
+          name: "record_decision",
+          input: {
+            intent: "ticket_create",
+            understanding: "VPN não conecta (erro 809) no notebook.",
+            action: "Montar rascunho de chamado",
+            confidence: 0.82,
+            rationale: "Sem chamado aberto sobre o tema e o artigo da central não resolve.",
+          },
+        },
+      ],
+    };
+  }
+  return { text: "Montei o rascunho do chamado abaixo. Confira os dados e confirme para eu abrir." };
 }
 
 function partsFor(step: Exclude<ScriptStep, { error: string }>, n: number): StreamPart[] {
@@ -53,10 +145,10 @@ function scriptedModel(): MockLanguageModelV4 {
   return new MockLanguageModelV4({
     provider: "test",
     modelId: "scripted",
-    doStream: async () => {
+    doStream: async (options) => {
       const n = calls;
       calls += 1;
-      const step = script[n];
+      const step = script === null ? defaultStep(options.prompt as readonly PromptMessage[]) : script[n];
       if (!step) throw new Error("Roteiro do modelo esgotado.");
       if (step.error !== undefined) throw new Error(step.error);
       return { stream: convertArrayToReadableStream(partsFor(step, n)) };
