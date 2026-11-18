@@ -55,18 +55,21 @@ describe("rascunhos de chamado (Postgres real, gateway falso)", () => {
   });
 
   async function newConversation(employeeId: string): Promise<string> {
+    // Só pode haver uma conversa aberta por funcionário (índice único parcial).
+    await db.update(conversations).set({ state: "closed" }).where(eq(conversations.employeeId, employeeId));
     const [row] = await db.insert(conversations).values({ employeeId }).returning({ id: conversations.id });
     return row?.id ?? "";
   }
 
   async function newDraft(overrides: Partial<NewDraftInput> & { payloadOverrides?: Partial<DraftPayload> } = {}) {
     const { payloadOverrides, ...rest } = overrides;
+    const conversationId = rest.conversationId ?? (await newConversation("ana.souza"));
     return service.createDraft({
-      conversationId: await newConversation("ana.souza"),
       employeeId: "ana.souza",
       kind: "create",
       payload: payload(payloadOverrides),
       ...rest,
+      conversationId,
     });
   }
 
@@ -79,7 +82,8 @@ describe("rascunhos de chamado (Postgres real, gateway falso)", () => {
   });
 
   it("displayCodes simultâneos não colidem", async () => {
-    const drafts = await Promise.all(Array.from({ length: 6 }, () => newDraft()));
+    const conversationId = await newConversation("ana.souza");
+    const drafts = await Promise.all(Array.from({ length: 6 }, () => newDraft({ conversationId })));
     expect(new Set(drafts.map((d) => d.displayCode)).size).toBe(6);
   });
 

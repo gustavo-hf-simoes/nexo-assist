@@ -1,7 +1,7 @@
 import type { ConversationState } from "@nexo/domain";
 import { and, desc, eq, ne } from "drizzle-orm";
 import type { Database } from "../db/client";
-import { conversations, messages, users } from "../db/schema";
+import { conversations, decisionTraces, messages, users } from "../db/schema";
 
 export type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 export type Executor = Database | Tx;
@@ -68,14 +68,19 @@ export class ConversationRepository {
     return rows.length > 0;
   }
 
-  async insertMessage(conversationId: string, msg: NewMessage, ex: Executor = this.db): Promise<void> {
-    await ex.insert(messages).values({
-      conversationId,
-      author: msg.author,
-      authorId: msg.authorId ?? null,
-      content: msg.content,
-      parts: msg.parts ?? null,
-    });
+  async insertMessage(conversationId: string, msg: NewMessage, ex: Executor = this.db): Promise<string> {
+    const [row] = await ex
+      .insert(messages)
+      .values({
+        conversationId,
+        author: msg.author,
+        authorId: msg.authorId ?? null,
+        content: msg.content,
+        parts: msg.parts ?? null,
+      })
+      .returning({ id: messages.id });
+    if (!row) throw new Error("Falha ao gravar a mensagem.");
+    return row.id;
   }
 
   async userName(id: string, ex: Executor): Promise<string | undefined> {
@@ -93,4 +98,33 @@ export class ConversationRepository {
       .orderBy(desc(messages.createdAt), desc(messages.id))
       .limit(limit);
   }
+}
+
+export interface StoredMessage {
+  id: string;
+  author: MessageAuthor;
+  authorName: string | null;
+  content: string;
+  parts: unknown;
+  createdAt: Date;
+  trace: typeof decisionTraces.$inferSelect | null;
+}
+
+export async function listMessages(db: Database, conversationId: string): Promise<StoredMessage[]> {
+  const rows = await db
+    .select({
+      id: messages.id,
+      author: messages.author,
+      authorName: users.name,
+      content: messages.content,
+      parts: messages.parts,
+      createdAt: messages.createdAt,
+      trace: decisionTraces,
+    })
+    .from(messages)
+    .leftJoin(users, eq(users.id, messages.authorId))
+    .leftJoin(decisionTraces, eq(decisionTraces.messageId, messages.id))
+    .where(eq(messages.conversationId, conversationId))
+    .orderBy(messages.createdAt, messages.id);
+  return rows;
 }

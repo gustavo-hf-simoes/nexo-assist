@@ -1,12 +1,15 @@
 import type { ModelMessage } from "ai";
 import { getDb } from "../db/app-db";
 import type { Database } from "../db/client";
+import { isUniqueViolation } from "../db/pg-errors";
 import {
   ConversationRepository,
   type ConversationPatch,
   type ConversationRow,
   type Executor,
+  listMessages,
   type NewMessage,
+  type StoredMessage,
 } from "./conversation-repository";
 import { transition, type ConversationEvent } from "./conversation-state";
 import { InvalidTransitionError } from "./errors";
@@ -19,11 +22,25 @@ export class ConversationService {
   }
 
   async getOrCreateCurrent(employeeId: string): Promise<ConversationRow> {
-    return (await this.repo.findCurrent(employeeId)) ?? this.repo.create(employeeId);
+    const current = await this.repo.findCurrent(employeeId);
+    if (current) return current;
+    try {
+      return await this.repo.create(employeeId);
+    } catch (error) {
+      // Corrida entre duas primeiras chamadas: o índice único parcial rejeita a segunda; relê a vencedora.
+      if (!isUniqueViolation(error)) throw error;
+      const winner = await this.repo.findCurrent(employeeId);
+      if (!winner) throw error;
+      return winner;
+    }
   }
 
-  async appendMessage(conversationId: string, msg: NewMessage): Promise<void> {
-    await this.repo.insertMessage(conversationId, msg);
+  async appendMessage(conversationId: string, msg: NewMessage): Promise<string> {
+    return this.repo.insertMessage(conversationId, msg);
+  }
+
+  listMessages(conversationId: string): Promise<StoredMessage[]> {
+    return listMessages(this.db, conversationId);
   }
 
   // Muda o estado e grava a mensagem de sistema na mesma transação.

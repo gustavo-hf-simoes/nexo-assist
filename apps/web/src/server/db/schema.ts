@@ -10,6 +10,7 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -54,7 +55,13 @@ export const conversations = pgTable(
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("conversations_employee_idx").on(t.employeeId)],
+  (t) => [
+    index("conversations_employee_idx").on(t.employeeId),
+    // No máximo uma conversa aberta por funcionário; fecha a corrida do getOrCreateCurrent.
+    uniqueIndex("conversations_one_open_per_employee")
+      .on(t.employeeId)
+      .where(sql`${t.state} <> 'closed'`),
+  ],
 );
 
 export const messages = pgTable(

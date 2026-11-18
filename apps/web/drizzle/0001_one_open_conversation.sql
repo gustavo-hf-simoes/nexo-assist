@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "conversations_one_open_per_employee" ON "conversations" USING btree ("employee_id") WHERE "conversations"."state" <> 'closed';

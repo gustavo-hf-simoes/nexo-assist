@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Database } from "../db/client";
+import { isUniqueViolation } from "../db/pg-errors";
 import { ticketDrafts } from "../db/schema";
 import type { DraftPayload, DraftStatus, NewDraftInput } from "./draft-types";
 
@@ -7,12 +8,6 @@ export type DraftRow = Omit<typeof ticketDrafts.$inferSelect, "payload"> & { pay
 
 const MAX_CODE_ATTEMPTS = 5;
 const FIRST_DISPLAY_NUMBER = 381;
-
-function isUniqueViolation(error: unknown): boolean {
-  const code = (e: unknown): unknown => (typeof e === "object" && e !== null ? (e as { code?: unknown }).code : undefined);
-  const cause = typeof error === "object" && error !== null ? (error as { cause?: unknown }).cause : undefined;
-  return code(error) === "23505" || code(cause) === "23505";
-}
 
 function asRow(row: typeof ticketDrafts.$inferSelect): DraftRow {
   return { ...row, payload: row.payload as DraftPayload };
@@ -50,6 +45,15 @@ export class DraftRepository {
         if (!isUniqueViolation(error) || attempt >= MAX_CODE_ATTEMPTS) throw error;
       }
     }
+  }
+
+  async listByConversation(conversationId: string, employeeId: string): Promise<DraftRow[]> {
+    const rows = await this.db
+      .select()
+      .from(ticketDrafts)
+      .where(and(eq(ticketDrafts.conversationId, conversationId), eq(ticketDrafts.employeeId, employeeId)))
+      .orderBy(ticketDrafts.createdAt, ticketDrafts.displayCode);
+    return rows.map(asRow);
   }
 
   async findById(id: string): Promise<DraftRow | null> {

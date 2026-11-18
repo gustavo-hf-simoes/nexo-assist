@@ -29,6 +29,17 @@ export class DraftService {
     return toDraftView(await this.repo.insertSupersedingPending(input));
   }
 
+  async listForConversation(conversationId: string, employeeId: string): Promise<DraftView[]> {
+    return (await this.repo.listByConversation(conversationId, employeeId)).map(toDraftView);
+  }
+
+  // Dados mínimos de um rascunho do funcionário; de outro funcionário ou inexistente é "não encontrado".
+  async getOwned(draftId: string, employeeId: string): Promise<{ conversationId: string; kind: DraftRow["kind"] }> {
+    const row = await this.repo.findById(draftId);
+    if (!row || row.employeeId !== employeeId) throw new DraftNotFoundError();
+    return { conversationId: row.conversationId, kind: row.kind };
+  }
+
   async confirm(draftId: string, employeeId: string): Promise<{ ticket: TicketDto; handoff?: HandoffReason }> {
     const draft = await this.repo.transitionFromPending(draftId, employeeId, "confirming");
     if (!draft) throw await this.whyNotPending(draftId, employeeId);

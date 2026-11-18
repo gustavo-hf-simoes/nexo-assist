@@ -13,16 +13,19 @@ export interface QuotaUsage {
 
 // Cota por sessão de autenticação (sid), contada em auth_sessions.messages_sent.
 export class MessageQuota {
-  constructor(private readonly db: Database = getDb()) {}
+  constructor(
+    private readonly db: Database = getDb(),
+    private readonly limit: number = MESSAGE_LIMIT,
+  ) {}
 
   async consume(sessionId: string): Promise<QuotaUsage> {
     // Incremento atômico e condicional: nunca passa do limite, mesmo com chamadas concorrentes.
     const [row] = await this.db
       .update(authSessions)
       .set({ messagesSent: sql`${authSessions.messagesSent} + 1` })
-      .where(and(eq(authSessions.id, sessionId), lt(authSessions.messagesSent, MESSAGE_LIMIT)))
+      .where(and(eq(authSessions.id, sessionId), lt(authSessions.messagesSent, this.limit)))
       .returning({ used: authSessions.messagesSent });
-    if (row) return { used: row.used, limit: MESSAGE_LIMIT };
+    if (row) return { used: row.used, limit: this.limit };
     await this.peek(sessionId); // sessão inexistente lança aqui
     throw new QuotaExceededError();
   }
@@ -33,6 +36,6 @@ export class MessageQuota {
       .from(authSessions)
       .where(eq(authSessions.id, sessionId));
     if (!row) throw new Error("Sessão não encontrada.");
-    return { used: row.used, limit: MESSAGE_LIMIT };
+    return { used: row.used, limit: this.limit };
   }
 }
