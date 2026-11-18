@@ -175,6 +175,33 @@ describe("API HTTP de chamados (Postgres real)", () => {
     expect(await notResolved.json()).toMatchObject({ error: "not_resolved" });
   });
 
+  it("reabrir chamado resolvido há mais de 7 dias devolve 409 reopen_window_expired", async () => {
+    const res = await app.request("/tickets/INC-19877/reopen", {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ requesterId: "ana.souza" }),
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "reopen_window_expired" });
+  });
+
+  it("comentário repetido com a mesma Idempotency-Key é um replay e devolve 200", async () => {
+    const url = "/tickets/INC-20311/comments";
+    const key = { ...json, "Idempotency-Key": "c-replay" };
+    const first = await app.request(url, {
+      method: "POST",
+      headers: key,
+      body: JSON.stringify({ requesterId: "ana.souza", body: "Primeiro." }),
+    });
+    expect(first.status).toBe(200);
+    const replay = await app.request(url, {
+      method: "POST",
+      headers: key,
+      body: JSON.stringify({ requesterId: "ana.souza", body: "Primeiro." }),
+    });
+    expect(replay.status).toBe(200);
+  });
+
   it("transfere para o analista", async () => {
     const res = await app.request("/tickets/INC-20311/transfer", {
       method: "POST",

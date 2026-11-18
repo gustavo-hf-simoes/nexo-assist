@@ -1,6 +1,6 @@
 import { inArray, sql } from "drizzle-orm";
 import { pathToFileURL } from "node:url";
-import { loadEnv } from "./config/env";
+import { loadDbEnv } from "./config/env";
 import { createDb, type Database } from "./db/client";
 import { ticketEvents, tickets, type TicketInsert } from "./db/schema";
 
@@ -146,7 +146,7 @@ export async function seedTickets(db: Database, now: Date = new Date()): Promise
 }
 
 async function main(): Promise<void> {
-  const { db, pool } = createDb(loadEnv().TICKETS_DATABASE_URL);
+  const { db, pool } = createDb(loadDbEnv().TICKETS_DATABASE_URL);
   try {
     await seedTickets(db);
     console.log("Dados de exemplo gravados.");

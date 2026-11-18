@@ -1,6 +1,6 @@
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { loadEnv } from "../config/env";
+import { loadDbEnv } from "../config/env";
 import { createDb, type Database } from "./client";
 
 const MIGRATIONS_FOLDER = fileURLToPath(new URL("../../drizzle", import.meta.url));
@@ -10,7 +10,7 @@ export async function runMigrations(db: Database): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const { db, pool } = createDb(loadEnv().TICKETS_DATABASE_URL);
+  const { db, pool } = createDb(loadDbEnv().TICKETS_DATABASE_URL);
   try {
     await runMigrations(db);
     console.log("Migrações aplicadas.");

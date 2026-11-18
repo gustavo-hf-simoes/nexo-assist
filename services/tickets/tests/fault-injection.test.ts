@@ -61,4 +61,25 @@ describe("falhas simuladas", () => {
     const res = await app.request("/tickets?requesterId=ana.souza", { headers });
     expect(res.status).toBe(200);
   });
+
+  it("erro desconhecido do repositório vira 500 internal_error sem stack trace", async () => {
+    const boom: TicketRepository = {
+      ...stubRepository,
+      listByRequester: async () => {
+        throw new Error("falha secreta de banco em /var/app/db.ts");
+      },
+    };
+    const app = createApp({
+      repository: boom,
+      token: TOKEN,
+      faultInjector: createFaultInjector({ failureRate: 0 }),
+    });
+    const res = await app.request("/tickets?requesterId=ana.souza", { headers });
+    expect(res.status).toBe(500);
+    const text = await res.text();
+    expect(JSON.parse(text)).toMatchObject({ error: "internal_error" });
+    expect(text).not.toContain("falha secreta");
+    expect(text).not.toContain("at ");
+    expect(text).not.toContain("stack");
+  });
 });
