@@ -4,17 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "node --env-file-if-exists=../../.env ../../node_modules/next/dist/bin/next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "e2e": "playwright test",
+    "eval": "tsx --env-file-if-exists=../../.env evals/run-evals.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/server/db/migrate.ts",
-    "db:seed": "tsx src/server/db/seed.ts"
+    "db:migrate": "tsx --env-file-if-exists=../../.env src/server/db/migrate.ts",
+    "db:seed": "tsx --env-file-if-exists=../../.env src/server/db/seed.ts"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.180",
