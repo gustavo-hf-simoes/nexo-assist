@@ -6,7 +6,7 @@ import { ConversationService } from "../../src/server/conversations/conversation
 import { toUiMessage } from "../../src/server/conversations/ui-messages";
 import { createDb, type Database } from "../../src/server/db/client";
 import { runMigrations } from "../../src/server/db/migrate";
-import { conversations, messages } from "../../src/server/db/schema";
+import { conversations } from "../../src/server/db/schema";
 import { seedApp } from "../../src/server/db/seed";
 import { confirmDraft, draftErrorResponse } from "../../src/server/drafts/draft-actions";
 import { DraftService } from "../../src/server/drafts/draft-service";
@@ -141,7 +141,6 @@ describe("rotas do chat e ações de rascunho (Postgres real)", () => {
     expect(ui.parts).toEqual([{ type: "text", text: "oi" }]);
     expect(ui.trace).toBeUndefined();
     expect(typeof ui.createdAt).toBe("string");
-    void messages;
   });
 
   describe("rotas HTTP", () => {

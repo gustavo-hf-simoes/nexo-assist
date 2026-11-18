@@ -1,4 +1,4 @@
-import { and, eq, lt, sql } from "drizzle-orm";
+import { and, eq, gt, lt, sql } from "drizzle-orm";
 import { getDb } from "../db/app-db";
 import type { Database } from "../db/client";
 import { authSessions } from "../db/schema";
@@ -28,6 +28,14 @@ export class MessageQuota {
     if (row) return { used: row.used, limit: this.limit };
     await this.peek(sessionId); // sessão inexistente lança aqui
     throw new QuotaExceededError();
+  }
+
+  // Devolve uma unidade quando o turno falhou antes de qualquer resposta.
+  async refund(sessionId: string): Promise<void> {
+    await this.db
+      .update(authSessions)
+      .set({ messagesSent: sql`${authSessions.messagesSent} - 1` })
+      .where(and(eq(authSessions.id, sessionId), gt(authSessions.messagesSent, 0)));
   }
 
   async peek(sessionId: string): Promise<QuotaUsage> {

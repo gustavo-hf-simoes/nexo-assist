@@ -42,6 +42,10 @@ export interface TurnDeps {
   minConfidence: number;
 }
 
+export const PERSIST_ERROR_TEXT = "Não consegui salvar esta resposta no histórico. Ela pode não aparecer ao recarregar a conversa.";
+
+const PERSIST_WAIT_MS = 10_000;
+
 export const TURN_ERROR_TEXT = "Não consegui processar sua mensagem agora. Tente novamente em instantes.";
 
 export interface TurnConfig {
@@ -186,14 +190,22 @@ export async function runTurn(
   }
 
   // 4. Grava a mensagem do funcionário; ela fica mesmo se o modelo falhar.
-  await deps.conversations.appendMessage(conversation.id, { author: "employee", authorId: session.userId, content: text });
-  const history = await deps.conversations.history(conversation.id, 20);
-  const requestContext = createNexoRequestContext({
-    employeeId: session.userId,
-    conversationId: conversation.id,
-    sessionId: session.sid,
-    profile: await loadProfile(deps.db, session),
-  });
+  // Se algo falhar antes do stream começar, os dois contadores voltam (o modelo não foi chamado).
+  let history;
+  let requestContext;
+  try {
+    await deps.conversations.appendMessage(conversation.id, { author: "employee", authorId: session.userId, content: text });
+    history = await deps.conversations.history(conversation.id, 20);
+    requestContext = createNexoRequestContext({
+      employeeId: session.userId,
+      conversationId: conversation.id,
+      sessionId: session.sid,
+      profile: await loadProfile(deps.db, session),
+    });
+  } catch (error) {
+    await Promise.allSettled([deps.usage.refund(), deps.quota.refund(session.sid)]);
+    throw error;
+  }
   const startedAt = Date.now();
 
   // 5. Stream do agent para o formato de UI message do AI SDK.
@@ -204,34 +216,64 @@ export async function runTurn(
     },
     execute: async ({ writer }) => {
       let failed = false;
+      let persistFailed = false;
+      let settled!: () => void;
+      const persisted = new Promise<void>((resolve) => {
+        settled = resolve;
+      });
       const output = await deps.agent.stream(history, {
         requestContext,
         maxSteps: MAX_STEPS,
         onError: (error) => {
           failed = true;
           logFailure(error);
+          settled();
         },
         onFinish: async (event) => {
-          if (failed || event.error !== undefined || event.finishReason === "error") return;
+          if (failed || event.error !== undefined || event.finishReason === "error") {
+            settled();
+            return;
+          }
           try {
             const steps = event.steps as unknown as FinishedStep[];
             await persistAgentTurn(deps, conversation.id, steps, buildDecisionTrace(steps, startedAt, deps.modelId));
           } catch (error) {
+            persistFailed = true;
             logFailure(error);
+          } finally {
+            settled();
           }
         },
       });
+      // Ao fim do stream, espera a gravação (com limite) e, se falhou, avisa o cliente com um erro em pt-BR.
+      const withPersistNotice = new TransformStream({
+        async flush(controller) {
+          await Promise.race([persisted, new Promise((resolve) => setTimeout(resolve, PERSIST_WAIT_MS))]);
+          if (persistFailed) controller.enqueue({ type: "error", errorText: PERSIST_ERROR_TEXT });
+        },
+      });
       writer.merge(
-        toAISdkStream(output, {
-          from: "agent",
-          version: "v7",
-          onError: (error) => {
-            logFailure(error);
-            return TURN_ERROR_TEXT;
-          },
-        }) as unknown as ReadableStream<never>,
+        (
+          toAISdkStream(output, {
+            from: "agent",
+            version: "v7",
+            onError: (error) => {
+              logFailure(error);
+              return TURN_ERROR_TEXT;
+            },
+          }) as unknown as ReadableStream<unknown>
+        ).pipeThrough(withPersistNotice) as unknown as ReadableStream<never>,
       );
     },
   });
-  return { kind: "stream", response: createUIMessageStreamResponse({ stream }) };
+  return {
+    kind: "stream",
+    response: createUIMessageStreamResponse({
+      stream,
+      // Uma cópia do stream é consumida no servidor: o turno termina (e grava) mesmo se o cliente desconectar.
+      consumeSseStream: ({ stream: copy }) => {
+        void copy.pipeTo(new WritableStream()).catch(logFailure);
+      },
+    }),
+  };
 }

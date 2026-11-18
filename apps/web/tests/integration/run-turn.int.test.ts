@@ -151,6 +151,50 @@ describe("turno do agent (Postgres real, modelo roteirizado)", () => {
     expect(await db.select().from(decisionTraces)).toHaveLength(0);
   });
 
+  it("cliente que desconecta no meio do stream: o turno termina e grava mensagem do agent e trace", async () => {
+    const conv = await current();
+    setScript([{ toolCalls: [decision(0.9)] }, { text: "Resposta completa mesmo sem cliente." }]);
+    const result = await runTurn({ session: session(), text: "oi" }, deps);
+    if (result.kind !== "stream" || !result.response.body) throw new Error("esperava stream");
+    const reader = result.response.body.getReader();
+    await reader.read();
+    await reader.cancel();
+    const deadline = Date.now() + 8000;
+    let rows = await rowsOf(conv.id);
+    while (!rows.some((r) => r.author === "agent") && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 100));
+      rows = await rowsOf(conv.id);
+    }
+    const agent = rows.find((r) => r.author === "agent");
+    expect(agent?.content).toBe("Resposta completa mesmo sem cliente.");
+    expect(await db.select().from(decisionTraces).where(eq(decisionTraces.messageId, agent?.id ?? ""))).toHaveLength(1);
+  });
+
+  it("falha ao gravar o turno: o stream carrega um erro em pt-BR, sem stack", async () => {
+    const failing: TurnDeps = {
+      ...deps,
+      db: new Proxy(db, {
+        get: (target, prop, receiver) =>
+          prop === "transaction" ? () => Promise.reject(new Error("falha-interna-db")) : Reflect.get(target, prop, receiver),
+      }),
+    };
+    const { result, body } = await run("oi", [{ toolCalls: [decision(0.9)] }, { text: "resposta" }], failing);
+    expect(result.kind).toBe("stream");
+    expect(body).toContain('"type":"error"');
+    expect(body).toContain("Não consegui salvar");
+    expect(body).not.toMatch(/falha-interna-db|node_modules/);
+  });
+
+  it("falha depois de consumir os contadores devolve sessão e limite diário", async () => {
+    const broken = Object.create(deps.conversations, {
+      appendMessage: { value: () => Promise.reject(new Error("falha ao gravar")) },
+    }) as TurnDeps["conversations"];
+    setScript([{ text: "x" }]);
+    await expect(runTurn({ session: session(), text: "oi" }, { ...deps, conversations: broken })).rejects.toThrow();
+    expect(await usedOf()).toBe(0);
+    expect((await db.select().from(dailyUsage))[0]?.llmTurns ?? 0).toBe(0);
+  });
+
   it("agent real do Mastra: o RequestContext é compartilhado e getRecordedDecision enxerga a decisão no onFinish", async () => {
     const agent = createNexoAgent({
       gateway,
