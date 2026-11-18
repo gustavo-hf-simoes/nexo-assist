@@ -140,7 +140,7 @@ Premissas de forma (não medidas): conversa típica de 6 turnos; por turno, de 2
 - **Login de demonstração:** qualquer senha não vazia com um e-mail do seed. Não serve para produção.
 - **Limite de 30 mensagens por sessão de login:** um novo login zera a contagem.
 - **Feriados:** o SLA em horário útil (seg-sex, 08:00-18:00, `America/Sao_Paulo`) ignora feriados.
-- **`NEXO_AGENT_MODEL=test/scripted`:** modelo roteirizado, só para testes e E2E. É liberado por configuração e não é bloqueado em produção.
+- **`NEXO_AGENT_MODEL=test/scripted`:** modelo roteirizado, só para testes e E2E. A configuração o recusa quando `NODE_ENV=production` (falha ao subir). O E2E usa `next dev`, então não é afetado.
 - **Polling em vez de WebSocket:** o chat e o console consultam o servidor periodicamente. Mais simples, com alguma latência.
 - **Rate limit de login em memória:** 5 falhas em 60 s, por processo. Reinicia com o processo e não é compartilhado entre instâncias.
 - **Busca full-text em vez de RAG:** a central tem poucos artigos (ADR 0001).
@@ -154,6 +154,5 @@ Premissas de forma (não medidas): conversa típica de 6 turnos; por turno, de 2
 - Autenticação real (SSO) e rate limit compartilhado (Redis ou banco).
 - Calendário de feriados no cálculo de SLA.
 - WebSocket ou SSE no lugar do polling.
-- Bloquear o modelo `test/scripted` em produção.
 - Rodar o eval em um job manual do CI, com a chave em segredo.
 - Um comando único que suba os dois serviços de desenvolvimento.

@@ -35,6 +35,14 @@ describe("loadEnv", () => {
     expect(() => loadEnv({ ...semChave, NEXO_AGENT_MODEL: "test/echo" })).not.toThrow();
   });
 
+  it("rejeita modelo test/ em produção, mesmo com a chave do Gemini", () => {
+    expect(() => loadEnv({ ...valid, NEXO_AGENT_MODEL: "test/scripted", NODE_ENV: "production" })).toThrowError(
+      /NEXO_AGENT_MODEL/,
+    );
+    expect(() => loadEnv({ ...valid, NEXO_AGENT_MODEL: "test/scripted", NODE_ENV: "development" })).not.toThrow();
+    expect(() => loadEnv({ ...valid, NEXO_AGENT_MODEL: "google/gemini-3.8-flash", NODE_ENV: "production" })).not.toThrow();
+  });
+
   it("aplica os valores padrão", () => {
     const env = loadEnv(valid);
     expect(env.AGENT_MIN_CONFIDENCE).toBe(0.6);

@@ -11,9 +11,17 @@ const EnvSchema = DbEnvSchema.extend({
   AGENT_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
   SESSION_MESSAGE_LIMIT: z.coerce.number().int().min(1).default(30),
   DAILY_LLM_TURN_LIMIT: z.coerce.number().int().min(1).default(500),
+  NODE_ENV: z.string().optional(),
 }).superRefine((value, ctx) => {
   // Modelos "test/..." rodam sem chamar o Gemini, então dispensam a chave.
   const usesTestModel = value.NEXO_AGENT_MODEL?.startsWith("test/") === true;
+  if (usesTestModel && value.NODE_ENV === "production") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["NEXO_AGENT_MODEL"],
+      message: "modelos test/ não são permitidos em produção (NODE_ENV=production)",
+    });
+  }
   if (!usesTestModel && !value.GOOGLE_GENERATIVE_AI_API_KEY) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
