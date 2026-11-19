@@ -43,6 +43,12 @@ describe("loadEnv", () => {
     expect(() => loadEnv({ ...valid, NEXO_AGENT_MODEL: "google/gemini-3.8-flash", NODE_ENV: "production" })).not.toThrow();
   });
 
+  it("reconhece produção mesmo com NODE_ENV em outra caixa ou com espaços", () => {
+    for (const NODE_ENV of ["Production", " PRODUCTION ", "production	"]) {
+      expect(() => loadEnv({ ...valid, NEXO_AGENT_MODEL: "test/scripted", NODE_ENV })).toThrowError(/NEXO_AGENT_MODEL/);
+    }
+  });
+
   it("aplica os valores padrão", () => {
     const env = loadEnv(valid);
     expect(env.AGENT_MIN_CONFIDENCE).toBe(0.6);
