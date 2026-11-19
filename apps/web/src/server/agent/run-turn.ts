@@ -4,7 +4,7 @@ import { createUIMessageStream, createUIMessageStreamResponse } from "ai";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/app-db";
 import type { Database } from "../db/client";
-import { decisionTraces, messages, users } from "../db/schema";
+import { conversations, decisionTraces, messages, users } from "../db/schema";
 import { env } from "../config/env";
 import { ConversationService } from "../conversations/conversation-service";
 import type { ConversationRow } from "../conversations/conversation-repository";
@@ -125,7 +125,14 @@ async function persistAgentTurn(
     .map((s) => s.text.trim())
     .filter((t) => t !== "")
     .join("\n\n");
-  await deps.db.transaction(async (tx) => {
+  const persisted = await deps.db.transaction(async (tx) => {
+    // Trava a conversa: se o analista assumiu (ou ela fechou) durante o turno, o agent não responde.
+    const [conv] = await tx
+      .select({ state: conversations.state })
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+      .for("update");
+    if (!conv || conv.state === "analyst" || conv.state === "closed") return false;
     const [row] = await tx
       .insert(messages)
       .values({ conversationId, author: "agent", content: text, parts: uiPartsOf(steps, text) })
@@ -142,7 +149,12 @@ async function persistAgentTurn(
       model: trace.model,
       latencyMs: trace.latencyMs,
     });
+    return true;
   });
+  if (!persisted) {
+    console.warn("[run-turn] resposta do agent descartada: a conversa saiu do agent durante o turno");
+    return;
+  }
   const event = applyPostTurnPolicy(trace, deps.minConfidence);
   if (!event) return;
   try {
