@@ -50,6 +50,10 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - name: Build de produção (web e bundle da Vercel do serviço de chamados)
+        run: |
+          npm run build
+          npm run build:vercel -w @nexo/tickets
 
   integration:
     name: Integração (Testcontainers)
