@@ -1,7 +1,14 @@
-import type { ConversationState } from "@nexo/domain";
+import type { ConversationState, TransferInput } from "@nexo/domain";
 import { InvalidTransitionError } from "./errors";
 
 export type HandoffReason = "user_request" | "critical" | "overdue" | "low_confidence";
+
+export type HandoffQueue = TransferInput["queue"];
+
+// Críticos e atrasados vão para o N2; o resto começa no N1.
+export function handoffQueue(reason: HandoffReason): HandoffQueue {
+  return reason === "critical" || reason === "overdue" ? "N2" : "N1";
+}
 
 export type ConversationEvent =
   | { type: "handoff"; reason: HandoffReason; summary: string }

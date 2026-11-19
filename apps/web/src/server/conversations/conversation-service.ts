@@ -11,7 +11,7 @@ import {
   type NewMessage,
   type StoredMessage,
 } from "./conversation-repository";
-import { transition, type ConversationEvent } from "./conversation-state";
+import { handoffQueue, transition, type ConversationEvent } from "./conversation-state";
 import { ConversationNotFoundError, InvalidTransitionError, NotAssignedError } from "./errors";
 
 export class ConversationService {
@@ -100,7 +100,7 @@ export class ConversationService {
   private async systemText(event: ConversationEvent, ex: Executor): Promise<string> {
     switch (event.type) {
       case "handoff":
-        return "Transferida para Suporte N2";
+        return `Transferida para Suporte ${handoffQueue(event.reason)}`;
       case "assume":
         return `${(await this.repo.userName(event.analystId, ex)) ?? "Analista"} assumiu a conversa`;
       case "return_to_agent":

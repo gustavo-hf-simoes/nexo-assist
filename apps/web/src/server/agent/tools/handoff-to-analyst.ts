@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
-import type { HandoffReason } from "../../conversations/conversation-state";
+import { handoffQueue, type HandoffReason } from "../../conversations/conversation-state";
 import { InvalidTransitionError } from "../../conversations/errors";
 import {
   TicketNotFoundError,
@@ -38,7 +38,7 @@ export function handoffToAnalystTool(deps: ToolDeps) {
         }
         throw error;
       }
-      const queue = input.reason === "critical" || input.reason === "overdue" ? ("N2" as const) : ("N1" as const);
+      const queue = handoffQueue(input.reason);
       let ticketTransferred = false;
       if (input.ticketCode) {
         try {

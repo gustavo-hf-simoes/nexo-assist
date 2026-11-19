@@ -65,6 +65,13 @@ describe("conversas e cota (Postgres real)", () => {
     expect(texts).toContain("Rafael Lima assumiu a conversa");
   });
 
+  it("handoff por pedido do usuário anuncia a fila N1", async () => {
+    const conv = await service.getOrCreateCurrent("fabio.nunes");
+    await service.apply(conv.id, { type: "handoff", reason: "user_request", summary: "Quer falar" });
+    const rows = await db.select().from(messages).where(eq(messages.conversationId, conv.id));
+    expect(rows.filter((m) => m.author === "system").map((m) => m.content)).toEqual(["Transferida para Suporte N1"]);
+  });
+
   it("dois assume concorrentes: um vence e o outro lança", async () => {
     const conv = await service.getOrCreateCurrent("diego.ramos");
     await service.apply(conv.id, { type: "handoff", reason: "user_request", summary: "x" });

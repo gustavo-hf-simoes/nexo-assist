@@ -141,7 +141,7 @@ describe("turno do agent (Postgres real, modelo roteirizado)", () => {
     const [row] = await db.select().from(conversations).where(eq(conversations.id, conv.id));
     expect(row).toMatchObject({ state: "waiting_analyst", handoffReason: "low_confidence" });
     const rows = await rowsOf(conv.id);
-    expect(rows.some((r) => r.author === "system" && r.content === "Transferida para Suporte N2")).toBe(true);
+    expect(rows.some((r) => r.author === "system" && r.content === "Transferida para Suporte N1")).toBe(true);
   });
 
   it("limite diário: daily_limit sem consumir a cota da sessão", async () => {
