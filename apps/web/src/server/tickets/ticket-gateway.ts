@@ -13,6 +13,6 @@ export interface TicketGateway {
     body: string,
     idempotencyKey: string,
   ): Promise<TicketDto>;
-  reopen(employeeId: string, code: string): Promise<TicketDto>;
-  transfer(employeeId: string, code: string, input: TransferInput): Promise<TicketDto>;
+  reopen(employeeId: string, code: string, idempotencyKey: string): Promise<TicketDto>;
+  transfer(employeeId: string, code: string, input: TransferInput, idempotencyKey: string): Promise<TicketDto>;
 }

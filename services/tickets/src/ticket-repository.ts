@@ -34,7 +34,7 @@ export interface TicketRepository {
     body: string,
     idempotencyKey: string,
   ): Promise<TicketDto>;
-  reopen(code: string, requesterId: string, now: Date): Promise<TicketDto>;
+  reopen(code: string, requesterId: string, now: Date, idempotencyKey?: string): Promise<TicketDto>;
   transfer(
     code: string,
     requesterId: string,
@@ -162,10 +162,24 @@ export class DrizzleTicketRepository implements TicketRepository {
     });
   }
 
-  async reopen(code: string, requesterId: string, now: Date): Promise<TicketDto> {
+  // Com chave, repetir a mesma reabertura é um replay: devolve o chamado atual sem novo evento nem 409.
+  async reopen(code: string, requesterId: string, now: Date, idempotencyKey?: string): Promise<TicketDto> {
     return this.db.transaction(async (tx) => {
       const ticket = await this.lockOwned(tx, code, requesterId);
       const dto = toDto(ticket);
+      if (idempotencyKey !== undefined) {
+        const [previous] = await tx
+          .select({ id: ticketEvents.id })
+          .from(ticketEvents)
+          .where(
+            and(
+              eq(ticketEvents.ticketCode, code),
+              eq(ticketEvents.kind, "reopen"),
+              eq(ticketEvents.idempotencyKey, idempotencyKey),
+            ),
+          );
+        if (previous) return dto;
+      }
       if (dto.status !== "resolvido") throw new TicketNotResolvedError(code);
       if (!canReopen(dto, now)) throw new ReopenWindowExpiredError(code);
       const [updated] = await tx
@@ -178,6 +192,7 @@ export class DrizzleTicketRepository implements TicketRepository {
         kind: "reopen",
         actor: requesterId,
         metadata: { from: "resolvido", to: "aberto" },
+        idempotencyKey: idempotencyKey ?? null,
         createdAt: now,
       });
       return toDto(updated ?? ticket);

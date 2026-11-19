@@ -175,6 +175,19 @@ describe("API HTTP de chamados (Postgres real)", () => {
     expect(await notResolved.json()).toMatchObject({ error: "not_resolved" });
   });
 
+  it("reabertura repetida com a mesma Idempotency-Key devolve 200 nas duas vezes", async () => {
+    const reopen = () =>
+      app.request("/tickets/INC-20150/reopen", {
+        method: "POST",
+        headers: { ...json, "Idempotency-Key": "r-replay" },
+        body: JSON.stringify({ requesterId: "ana.souza" }),
+      });
+    expect((await reopen()).status).toBe(200);
+    const again = await reopen();
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ status: "aberto" });
+  });
+
   it("reabrir chamado resolvido há mais de 7 dias devolve 409 reopen_window_expired", async () => {
     const res = await app.request("/tickets/INC-19877/reopen", {
       method: "POST",

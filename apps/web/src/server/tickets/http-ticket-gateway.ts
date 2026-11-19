@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { TicketDto, type CreateTicketInput, type TransferInput } from "@nexo/domain";
 import { z } from "zod";
 import type { TicketGateway, TicketScope } from "./ticket-gateway";
@@ -140,22 +139,23 @@ export class HttpTicketGateway implements TicketGateway {
     return parseJson(res, TicketDto);
   }
 
-  async reopen(employeeId: string, code: string): Promise<TicketDto> {
+  async reopen(employeeId: string, code: string, idempotencyKey: string): Promise<TicketDto> {
     const res = await this.request({
       method: "POST",
       path: `${ticketPath(code)}/reopen`,
       body: { requesterId: employeeId },
+      idempotencyKey,
     });
     return parseJson(res, TicketDto);
   }
 
-  async transfer(employeeId: string, code: string, input: TransferInput): Promise<TicketDto> {
+  async transfer(employeeId: string, code: string, input: TransferInput, idempotencyKey: string): Promise<TicketDto> {
     const res = await this.request({
       method: "POST",
       path: `${ticketPath(code)}/transfer`,
       body: { ...input, requesterId: employeeId },
-      // Uma chave por chamada, reaproveitada nos retries: repetir não transfere duas vezes.
-      idempotencyKey: randomUUID(),
+      // A chave vem de quem chama e é reaproveitada nos retries: repetir não transfere duas vezes.
+      idempotencyKey,
     });
     return parseJson(res, TicketDto);
   }

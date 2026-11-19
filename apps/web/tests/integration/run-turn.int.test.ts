@@ -141,7 +141,26 @@ describe("turno do agent (Postgres real, modelo roteirizado)", () => {
     const [row] = await db.select().from(conversations).where(eq(conversations.id, conv.id));
     expect(row).toMatchObject({ state: "waiting_analyst", handoffReason: "low_confidence" });
     const rows = await rowsOf(conv.id);
-    expect(rows.some((r) => r.author === "system" && r.content === "Transferida para Suporte N2")).toBe(true);
+    expect(rows.some((r) => r.author === "system" && r.content === "Transferida para Suporte N1")).toBe(true);
+  });
+
+  it("analista assume no meio do turno: a resposta do agent não é gravada nem transfere de novo", async () => {
+    const conv = await current();
+    const convs = new ConversationService(db);
+    const listMine = gateway.listMine.bind(gateway);
+    gateway.listMine = async (employeeId, scope) => {
+      await convs.apply(conv.id, { type: "handoff", reason: "user_request", summary: "x" });
+      await convs.apply(conv.id, { type: "assume", analystId: "rafael.lima" });
+      return listMine(employeeId, scope);
+    };
+    await run("minha VPN caiu", [
+      { toolCalls: [{ name: "search_my_tickets", input: { scope: "open" } }, decision(0.2)] },
+      { text: "Resposta atrasada do agent." },
+    ]);
+    const rows = await rowsOf(conv.id);
+    expect(rows.filter((r) => r.author === "agent")).toEqual([]);
+    expect(await stateOf(conv.id)).toBe("analyst");
+    expect(await db.select().from(decisionTraces)).toEqual([]);
   });
 
   it("limite diário: daily_limit sem consumir a cota da sessão", async () => {

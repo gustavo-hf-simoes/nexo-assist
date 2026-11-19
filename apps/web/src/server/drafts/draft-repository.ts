@@ -1,4 +1,4 @@
-import { and, eq, lt, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import type { Database } from "../db/client";
 import { isUniqueViolation } from "../db/pg-errors";
 import { ticketDrafts } from "../db/schema";
@@ -76,7 +76,8 @@ export class DraftRepository {
   }
 
   // Retoma um rascunho preso em `confirming` há mais de `staleMs` (UPDATE ... RETURNING atômico: só um
-  // retry ganha). Devolve o rascunho para reenviar com a mesma Idempotency-Key.
+  // retry ganha). Devolve o rascunho para reenviar com a mesma Idempotency-Key. `confirming_since` nulo
+  // (rascunho preso antes da coluna existir) conta como preso.
   async reclaimStaleConfirming(id: string, employeeId: string, staleMs: number): Promise<DraftRow | null> {
     const now = new Date();
     const [row] = await this.db
@@ -87,17 +88,31 @@ export class DraftRepository {
           eq(ticketDrafts.id, id),
           eq(ticketDrafts.employeeId, employeeId),
           eq(ticketDrafts.status, "confirming"),
-          lt(ticketDrafts.confirmingSince, new Date(now.getTime() - staleMs)),
+          or(isNull(ticketDrafts.confirmingSince), lt(ticketDrafts.confirmingSince, new Date(now.getTime() - staleMs))),
         ),
       )
       .returning();
     return row ? asRow(row) : null;
   }
 
-  async finishConfirming(id: string, to: Extract<DraftStatus, "confirmed" | "pending" | "failed">, ticketCode?: string): Promise<void> {
+  // Encerra a confirmação. Sucesso vale sempre (o chamado existe); pending/failed só valem para quem
+  // ainda é o dono da confirmação (`claimedAt` igual a `confirming_since`), para que um envio antigo
+  // e lento não desfaça a retomada feita por outro confirm.
+  async finishConfirming(
+    id: string,
+    to: Extract<DraftStatus, "confirmed" | "pending" | "failed">,
+    claimedAt: Date | null,
+    ticketCode?: string,
+  ): Promise<void> {
+    const owner =
+      to === "confirmed"
+        ? undefined
+        : claimedAt === null
+          ? isNull(ticketDrafts.confirmingSince)
+          : eq(ticketDrafts.confirmingSince, claimedAt);
     await this.db
       .update(ticketDrafts)
       .set({ status: to, ...(ticketCode === undefined ? {} : { ticketCode }) })
-      .where(and(eq(ticketDrafts.id, id), eq(ticketDrafts.status, "confirming")));
+      .where(and(eq(ticketDrafts.id, id), eq(ticketDrafts.status, "confirming"), owner));
   }
 }

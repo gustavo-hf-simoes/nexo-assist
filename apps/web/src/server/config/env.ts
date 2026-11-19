@@ -15,7 +15,7 @@ const EnvSchema = DbEnvSchema.extend({
 }).superRefine((value, ctx) => {
   // Modelos "test/..." rodam sem chamar o Gemini, então dispensam a chave.
   const usesTestModel = value.NEXO_AGENT_MODEL?.startsWith("test/") === true;
-  if (usesTestModel && value.NODE_ENV === "production") {
+  if (usesTestModel && value.NODE_ENV?.trim().toLowerCase() === "production") {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["NEXO_AGENT_MODEL"],

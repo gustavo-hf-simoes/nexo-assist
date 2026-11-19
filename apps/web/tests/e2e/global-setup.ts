@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 import { e2eEnv } from "../../playwright.config";
+import { assertLocalDatabaseUrl } from "./local-db-guard";
 
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
 
@@ -64,6 +65,8 @@ async function resetAnaConversation(): Promise<void> {
 
 // Migra e popula os dois bancos (idempotente), zera o usuário do E2E e só então os servidores sobem.
 export default async function globalSetup(): Promise<void> {
+  assertLocalDatabaseUrl("APP_DATABASE_URL", e2eEnv["APP_DATABASE_URL"] ?? "");
+  assertLocalDatabaseUrl("TICKETS_DATABASE_URL", e2eEnv["TICKETS_DATABASE_URL"] ?? "");
   for (const workspace of ["@nexo/tickets", "@nexo/web"]) {
     for (const script of ["db:migrate", "db:seed"]) {
       execSync(`npm run ${script} -w ${workspace}`, { cwd: root, env: { ...process.env, ...e2eEnv }, stdio: "inherit" });

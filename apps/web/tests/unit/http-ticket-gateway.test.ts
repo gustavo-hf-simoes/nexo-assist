@@ -117,9 +117,9 @@ describe("HttpTicketGateway", () => {
     await expect(gateway.addComment("a", "INC-1", "oi", "k")).rejects.toBeInstanceOf(
       TicketNotFoundError,
     );
-    await expect(gateway.reopen("a", "INC-1")).rejects.toBeInstanceOf(TicketNotFoundError);
+    await expect(gateway.reopen("a", "INC-1", "r")).rejects.toBeInstanceOf(TicketNotFoundError);
     await expect(
-      gateway.transfer("a", "INC-1", { summary: "s", queue: "N2" }),
+      gateway.transfer("a", "INC-1", { summary: "s", queue: "N2" }, "t"),
     ).rejects.toBeInstanceOf(TicketNotFoundError);
   });
 
@@ -174,8 +174,8 @@ describe("HttpTicketGateway", () => {
     ]);
     const codes: string[] = [];
     for (const run of [
-      () => gateway.reopen("a", "INC-1"),
-      () => gateway.reopen("a", "INC-1"),
+      () => gateway.reopen("a", "INC-1", "r"),
+      () => gateway.reopen("a", "INC-1", "r"),
       () => gateway.create("a", input, "k"),
     ]) {
       await run().catch((e: unknown) => {
@@ -186,16 +186,21 @@ describe("HttpTicketGateway", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("transfer reaproveita a mesma Idempotency-Key nos retries", async () => {
+  it("transfer envia a Idempotency-Key recebida em todos os retries", async () => {
     const { gateway, fetchMock } = setup([() => json(502, {}), () => json(200, ticket)]);
-    await gateway.transfer("a", "INC-1", { summary: "s", queue: "N1" });
+    await gateway.transfer("a", "INC-1", { summary: "s", queue: "N1" }, "t-1");
     const keys = fetchMock.mock.calls.map((c) => headerOf(c, "Idempotency-Key"));
-    expect(keys[0]).toBeTruthy();
-    expect(keys[1]).toBe(keys[0]);
+    expect(keys).toEqual(["t-1", "t-1"]);
+  });
+
+  it("reopen envia a Idempotency-Key recebida", async () => {
+    const { gateway, fetchMock } = setup([() => json(200, ticket)]);
+    await gateway.reopen("a", "INC-1", "r-1");
+    expect(fetchMock.mock.calls.map((c) => headerOf(c, "Idempotency-Key"))).toEqual(["r-1"]);
   });
 
   it("resposta fora do contrato do TicketDto é recusada", async () => {
     const { gateway } = setup([() => json(200, { code: "INC-1" })]);
-    await expect(gateway.reopen("a", "INC-1")).rejects.toBeInstanceOf(TicketRequestError);
+    await expect(gateway.reopen("a", "INC-1", "r")).rejects.toBeInstanceOf(TicketRequestError);
   });
 });

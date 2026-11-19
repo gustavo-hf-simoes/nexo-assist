@@ -99,6 +99,7 @@ describe("rotas do chat e ações de rascunho (Postgres real)", () => {
     expect(gateway.transferCalls).toHaveLength(1);
     expect(gateway.transferCalls[0]?.code).toBe(ticket.code);
     expect(gateway.transferCalls[0]?.input.queue).toBe("N2");
+    expect(gateway.transferCalls[0]?.idempotencyKey).toBe(`critical:${draft.id}`);
   });
 
   it("falha no transfer não desfaz a confirmação", async () => {
