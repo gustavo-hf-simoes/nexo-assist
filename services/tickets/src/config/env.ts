@@ -10,6 +10,8 @@ const EnvSchema = DbEnvSchema.extend({
   TICKET_SERVICE_FAILURE_RATE: z.coerce.number().min(0).max(1).default(0),
   TICKET_SERVICE_LATENCY_MS: z.coerce.number().int().min(0).default(0),
   PORT: z.coerce.number().int().min(1).max(65535).default(4010),
+  // Conexões por instância; em serverless (várias instâncias) vale um teto baixo, como 3.
+  DB_POOL_MAX: z.coerce.number().int().min(1).default(10),
 });
 export type TicketsEnv = z.infer<typeof EnvSchema>;
 

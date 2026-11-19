@@ -7,7 +7,7 @@ const globalForDb = globalThis as unknown as { nexoAppDb?: { db: Database; pool:
 
 // Um pool por processo (sobrevive ao hot reload do dev).
 export function getDb(): Database {
-  globalForDb.nexoAppDb ??= createDb(env.APP_DATABASE_URL);
+  globalForDb.nexoAppDb ??= createDb(env.APP_DATABASE_URL, { max: env.DB_POOL_MAX });
   return globalForDb.nexoAppDb.db;
 }
 

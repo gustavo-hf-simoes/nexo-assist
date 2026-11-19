@@ -190,12 +190,9 @@ describe("turno do agent (Postgres real, modelo roteirizado)", () => {
     const reader = result.response.body.getReader();
     await reader.read();
     await reader.cancel();
-    const deadline = Date.now() + 8000;
-    let rows = await rowsOf(conv.id);
-    while (!rows.some((r) => r.author === "agent") && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 100));
-      rows = await rowsOf(conv.id);
-    }
+    // `done` (usado com after() na rota) só resolve depois que o turno terminou e gravou.
+    await result.done;
+    const rows = await rowsOf(conv.id);
     const agent = rows.find((r) => r.author === "agent");
     expect(agent?.content).toBe("Resposta completa mesmo sem cliente.");
     expect(await db.select().from(decisionTraces).where(eq(decisionTraces.messageId, agent?.id ?? ""))).toHaveLength(1);

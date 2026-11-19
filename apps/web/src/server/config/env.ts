@@ -11,6 +11,8 @@ const EnvSchema = DbEnvSchema.extend({
   AGENT_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
   SESSION_MESSAGE_LIMIT: z.coerce.number().int().min(1).default(30),
   DAILY_LLM_TURN_LIMIT: z.coerce.number().int().min(1).default(500),
+  // Conexões por instância; em serverless (várias instâncias) vale um teto baixo, como 3.
+  DB_POOL_MAX: z.coerce.number().int().min(1).default(10),
   NODE_ENV: z.string().optional(),
 }).superRefine((value, ctx) => {
   // Modelos "test/..." rodam sem chamar o Gemini, então dispensam a chave.
