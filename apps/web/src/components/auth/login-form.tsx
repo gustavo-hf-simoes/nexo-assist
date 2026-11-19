@@ -2,7 +2,7 @@
 
 import { ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 const FIELD_BOX =
   "flex h-11 items-center gap-2.5 rounded-lg bg-white pl-3.5 pr-2 shadow-[0_1px_2px_rgba(27,36,49,0.04)] outline outline-1 -outline-offset-[0.5px] outline-ink/[0.12] focus-within:outline-2 focus-within:outline-brand";
@@ -19,6 +19,17 @@ export function LoginForm() {
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Com cacheComponents, o Next esconde esta tela (Activity) depois do login e a reexibe ao sair,
+  // preservando o estado. Ao esconder, solta o botão e apaga a senha digitada.
+  useEffect(
+    () => () => {
+      setLoading(false);
+      setPassword("");
+      setError(null);
+    },
+    [],
+  );
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
