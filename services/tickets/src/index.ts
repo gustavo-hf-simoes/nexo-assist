@@ -1,21 +1,7 @@
 import { serve } from "@hono/node-server";
-import { createApp } from "./app";
-import { loadEnv } from "./config/env";
-import { createDb } from "./db/client";
-import { createFaultInjector } from "./fault-injection";
-import { DrizzleTicketRepository } from "./ticket-repository";
+import { createServerApp } from "./server-app";
 
-const env = loadEnv();
-const { db, pool } = createDb(env.TICKETS_DATABASE_URL);
-
-const app = createApp({
-  repository: new DrizzleTicketRepository(db),
-  token: env.TICKET_SERVICE_TOKEN,
-  faultInjector: createFaultInjector({
-    failureRate: env.TICKET_SERVICE_FAILURE_RATE,
-    latencyMs: env.TICKET_SERVICE_LATENCY_MS,
-  }),
-});
+const { app, pool, env } = createServerApp();
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   console.log(`Serviço de chamados ouvindo na porta ${info.port}.`);

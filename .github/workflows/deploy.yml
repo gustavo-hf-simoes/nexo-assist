@@ -1,0 +1,142 @@
+name: Deploy
+
+# CD: roda só depois que a CI passa na main (ou à mão). Migra o Neon e publica os dois projetos na Vercel.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  VERCEL_CLI: vercel@66.2.0
+  # Commit que a CI aprovou (no disparo manual, o da main).
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  migrate:
+    name: Migrar e popular o banco
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      # URLs diretas do Neon: a migração não passa pelo pooler (pgbouncer em modo transação).
+      - name: Migrar e popular (seed idempotente)
+        env:
+          APP_DATABASE_URL: ${{ secrets.APP_DATABASE_URL_DIRECT }}
+          TICKETS_DATABASE_URL: ${{ secrets.TICKETS_DATABASE_URL_DIRECT }}
+        run: |
+          npm run db:migrate
+          npm run db:seed
+
+  deploy-tickets:
+    name: Publicar o serviço de chamados
+    needs: [migrate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_TICKETS }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      # Bundle único (esbuild) no formato Build Output API; a Vercel só recebe o resultado.
+      - name: Gerar a saída da Vercel
+        run: npm run build:vercel -w @nexo/tickets
+
+      - name: Publicar em produção
+        working-directory: services/tickets
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes "$VERCEL_CLI" deploy --prebuilt --prod --token "$VERCEL_TOKEN"
+
+  deploy-web:
+    name: Publicar o web (chat, console e agent)
+    needs: [deploy-tickets]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Baixar as configurações e variáveis de produção
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes "$VERCEL_CLI" pull --yes --environment=production --token "$VERCEL_TOKEN"
+
+      - name: Build
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes "$VERCEL_CLI" build --prod --token "$VERCEL_TOKEN"
+
+      - name: Publicar em produção
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes "$VERCEL_CLI" deploy --prebuilt --prod --token "$VERCEL_TOKEN"
+
+  smoke:
+    name: Verificar a produção
+    needs: [deploy-web]
+    if: vars.WEB_URL != '' && vars.TICKETS_URL != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # Primeira chamada pode pegar cold start da função e do Neon: tenta algumas vezes.
+      - name: Health do serviço de chamados e página de login do web
+        env:
+          WEB_URL: ${{ vars.WEB_URL }}
+          TICKETS_URL: ${{ vars.TICKETS_URL }}
+        run: |
+          check() {
+            for i in 1 2 3 4 5; do
+              if curl -fsS -o /dev/null "$1"; then echo "ok: $1"; return 0; fi
+              sleep 10
+            done
+            echo "falhou: $1"; return 1
+          }
+          check "$TICKETS_URL/health"
+          check "$WEB_URL/login"

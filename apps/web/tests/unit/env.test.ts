@@ -54,6 +54,12 @@ describe("loadEnv", () => {
     expect(env.AGENT_MIN_CONFIDENCE).toBe(0.6);
     expect(env.SESSION_MESSAGE_LIMIT).toBe(30);
     expect(env.DAILY_LLM_TURN_LIMIT).toBe(500);
+    expect(env.DB_POOL_MAX).toBe(10);
+  });
+
+  it("DB_POOL_MAX aceita um teto menor para serverless e recusa zero", () => {
+    expect(loadEnv({ ...valid, DB_POOL_MAX: "3" }).DB_POOL_MAX).toBe(3);
+    expect(() => loadEnv({ ...valid, DB_POOL_MAX: "0" })).toThrowError(/DB_POOL_MAX/);
   });
 });
 

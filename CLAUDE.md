@@ -35,7 +35,7 @@ Assistente de TI em chat: o funcionário descreve o problema, o agent (Mastra + 
 ## Nomenclatura
 
 - Arquivos em `kebab-case`; um módulo por responsabilidade.
-- Sem `export default` fora de `app/` (exigência do Next).
+- Sem `export default` fora de `app/` (exigência do Next). Exceção: `services/tickets/src/vercel-entry.ts`, entrada da função na Vercel, que a plataforma exige como default.
 
 ## Testes
 

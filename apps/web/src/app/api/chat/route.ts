@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { runTurn } from "@/server/agent/run-turn";
 import { requireEmployee } from "@/server/auth/guards";
@@ -22,6 +23,8 @@ export async function POST(req: Request): Promise<Response> {
     const result = await runTurn({ session: claims, text: parsed.data.text });
     switch (result.kind) {
       case "stream":
+        // Em serverless, mantém a função viva até o turno gravar, mesmo se o cliente desconectar.
+        after(() => result.done);
         return result.response;
       case "paused":
         return Response.json({ state: result.state }, { status: 409 });

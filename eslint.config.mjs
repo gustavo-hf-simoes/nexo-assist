@@ -2,7 +2,7 @@
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/.next/**", "**/coverage/**", "apps/web/**"] },
+  { ignores: ["**/dist/**", "**/.next/**", "**/coverage/**", "**/.vercel/**", "apps/web/**"] },
   ...tseslint.configs.recommended,
   {
     rules: {

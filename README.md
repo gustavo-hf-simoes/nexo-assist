@@ -45,6 +45,10 @@ O `docker-compose.yml` publica o Postgres em `${POSTGRES_PORT:-5432}`, e as URLs
 | `npm run eval` | Avaliação das decisões do agent contra o Gemini real (ver abaixo) |
 | `bash .github/scripts/test-hooks.sh` e `bash .github/scripts/check-forbidden-terms.sh` | Checagens da esteira |
 
+## Deploy
+
+Produção na Vercel (web e serviço de chamados em projetos separados) com Postgres no Neon, publicada por GitHub Actions depois que a CI passa na `main` (`.github/workflows/deploy.yml`). Topologia, segredos e trade-offs em [docs/deploy.md](docs/deploy.md).
+
 ## Usuários de exemplo
 
 O e-mail é `<id>@nexo.com.br`. A senha pode ser qualquer texto não vazio.

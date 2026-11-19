@@ -21,7 +21,8 @@ import { createNexoRequestContext } from "./request-context";
 import { DailyUsageLimit } from "./usage-limit";
 
 export type TurnResult =
-  | { kind: "stream"; response: Response }
+  // `done` resolve quando o turno terminou de gravar; a rota o entrega ao after() para a plataforma não congelar a função antes.
+  | { kind: "stream"; response: Response; done: Promise<void> }
   | { kind: "paused"; state: ConversationState }
   | { kind: "quota_exceeded"; used: number; limit: number }
   | { kind: "daily_limit" };
@@ -290,14 +291,22 @@ export async function runTurn(
       );
     },
   });
+  let consumed!: () => void;
+  const done = new Promise<void>((resolve) => {
+    consumed = resolve;
+  });
   return {
     kind: "stream",
     response: createUIMessageStreamResponse({
       stream,
       // Uma cópia do stream é consumida no servidor: o turno termina (e grava) mesmo se o cliente desconectar.
       consumeSseStream: ({ stream: copy }) => {
-        void copy.pipeTo(new WritableStream()).catch(logFailure);
+        void copy
+          .pipeTo(new WritableStream())
+          .catch(logFailure)
+          .finally(() => consumed());
       },
     }),
+    done,
   };
 }
