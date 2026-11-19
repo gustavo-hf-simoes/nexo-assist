@@ -179,6 +179,27 @@ describe("rascunhos de chamado (Postgres real, gateway falso)", () => {
     await expect(service.confirm(draft.id, "carla.mendes")).rejects.toBeInstanceOf(DraftNotFoundError);
   });
 
+  it("rascunho preso em confirming sem confirming_since (anterior à migração) é retomado", async () => {
+    const draft = await newDraft();
+    await db.update(ticketDrafts).set({ status: "confirming", confirmingSince: null }).where(eq(ticketDrafts.id, draft.id));
+    const { ticket } = await service.confirm(draft.id, "ana.souza");
+    expect(ticket.code).toMatch(/^INC-/);
+    const [row] = await db.select().from(ticketDrafts).where(eq(ticketDrafts.id, draft.id));
+    expect(row).toMatchObject({ status: "confirmed", ticketCode: ticket.code });
+  });
+
+  it("falha de um envio antigo não desfaz a retomada feita por outro confirm", async () => {
+    const draft = await newDraft();
+    // Durante o envio, outro confirm retoma o rascunho (confirming_since novo) e o envio antigo falha.
+    gateway.onCreate = async () => {
+      await db.update(ticketDrafts).set({ confirmingSince: new Date(Date.now() + 1000) }).where(eq(ticketDrafts.id, draft.id));
+    };
+    gateway.failCreateWith = new Error("boom");
+    await expect(service.confirm(draft.id, "ana.souza")).rejects.toThrow("boom");
+    const [row] = await db.select().from(ticketDrafts).where(eq(ticketDrafts.id, draft.id));
+    expect(row?.status).toBe("confirming");
+  });
+
   it("outro erro do gateway marca o rascunho como failed", async () => {
     const draft = await newDraft();
     gateway.failCreateWith = new Error("boom");

@@ -94,6 +94,8 @@ export class FakeTicketGateway implements TicketGateway {
   unavailable = false;
   failCreateWith: Error | null = null;
   createDelayMs = 0;
+  // Roda no meio do create (depois de registrar a chamada), para simular eventos concorrentes.
+  onCreate: (() => Promise<void>) | null = null;
   readonly createCalls: Array<{ employeeId: string; input: CreateTicketInput; idempotencyKey: string }> = [];
   readonly commentCalls: Array<{ employeeId: string; code: string; body: string; idempotencyKey: string }> = [];
   readonly reopenCalls: Array<{ employeeId: string; code: string; idempotencyKey: string }> = [];
@@ -131,6 +133,7 @@ export class FakeTicketGateway implements TicketGateway {
   async create(employeeId: string, input: CreateTicketInput, idempotencyKey: string): Promise<TicketDto> {
     this.createCalls.push({ employeeId, input, idempotencyKey });
     this.guard();
+    if (this.onCreate) await this.onCreate();
     if (this.failCreateWith) throw this.failCreateWith;
     if (this.createDelayMs > 0) await new Promise((r) => setTimeout(r, this.createDelayMs));
     const existing = this.byKey.get(idempotencyKey);

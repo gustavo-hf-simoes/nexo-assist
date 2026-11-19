@@ -56,10 +56,10 @@ export class DraftService {
     } catch (error) {
       // Indisponibilidade é transitória: volta a pending e o confirm seguinte reusa a mesma chave.
       const to = error instanceof TicketServiceUnavailableError ? "pending" : "failed";
-      await this.repo.finishConfirming(draft.id, to);
+      await this.repo.finishConfirming(draft.id, to, draft.confirmingSince);
       throw error;
     }
-    await this.repo.finishConfirming(draft.id, "confirmed", ticket.code);
+    await this.repo.finishConfirming(draft.id, "confirmed", draft.confirmingSince, ticket.code);
 
     if (draft.kind === "create" && ticket.priority === "critica") {
       const handoff = await this.handOffCritical(draft, ticket);
