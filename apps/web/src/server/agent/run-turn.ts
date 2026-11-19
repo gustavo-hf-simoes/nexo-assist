@@ -41,6 +41,8 @@ export interface TurnDeps {
   agent: NexoAgent;
   modelId: string;
   minConfidence: number;
+  // Prazo do turno: abaixo do maxDuration da rota (60 s), para o turno terminar com aviso antes da plataforma cortar.
+  turnTimeoutMs: number;
 }
 
 export const PERSIST_ERROR_TEXT = "Não consegui salvar esta resposta no histórico. Ela pode não aparecer ao recarregar a conversa.";
@@ -48,6 +50,11 @@ export const PERSIST_ERROR_TEXT = "Não consegui salvar esta resposta no histór
 const PERSIST_WAIT_MS = 10_000;
 
 export const TURN_ERROR_TEXT = "Não consegui processar sua mensagem agora. Tente novamente em instantes.";
+
+// Fica no histórico quando o turno falha, para quem recarrega a conversa (funcionário ou analista) saber que não houve resposta.
+export const TURN_FAILED_NOTICE = "O assistente não conseguiu responder a esta mensagem. Envie de novo em instantes.";
+
+export const TURN_TIMEOUT_MS = 45_000;
 
 export interface TurnConfig {
   db: Database;
@@ -75,6 +82,7 @@ export function createTurnDeps(config: TurnConfig): TurnDeps {
     }),
     modelId: config.modelId,
     minConfidence: config.minConfidence,
+    turnTimeoutMs: TURN_TIMEOUT_MS,
   };
 }
 
@@ -241,22 +249,35 @@ export async function runTurn(
     },
     execute: async ({ writer }) => {
       let failed = false;
+      let aborted = false;
       let persistFailed = false;
       let settled!: () => void;
       const persisted = new Promise<void>((resolve) => {
         settled = resolve;
       });
+      // Falha (erro do modelo ou prazo estourado): registra o aviso uma vez só e libera a espera da gravação.
+      const fail = (error: unknown): void => {
+        if (failed) return;
+        failed = true;
+        logFailure(error);
+        void deps.conversations
+          .appendMessage(conversation.id, { author: "system", content: TURN_FAILED_NOTICE })
+          .catch(logFailure)
+          .finally(settled);
+      };
       const output = await deps.agent.stream(history, {
         requestContext,
         maxSteps: MAX_STEPS,
-        onError: (error) => {
-          failed = true;
-          logFailure(error);
-          settled();
+        abortSignal: AbortSignal.timeout(deps.turnTimeoutMs),
+        onAbort: () => {
+          aborted = true;
+          fail(new Error(`turno cancelado após ${deps.turnTimeoutMs} ms sem resposta do modelo`));
         },
+        onError: (error) => fail(error),
         onFinish: async (event) => {
-          if (failed || event.error !== undefined || event.finishReason === "error") {
-            settled();
+          if (failed) return;
+          if (event.error !== undefined || event.finishReason === "error") {
+            fail(event.error ?? new Error("o modelo terminou com erro"));
             return;
           }
           try {
@@ -274,6 +295,7 @@ export async function runTurn(
       const withPersistNotice = new TransformStream({
         async flush(controller) {
           await Promise.race([persisted, new Promise((resolve) => setTimeout(resolve, PERSIST_WAIT_MS))]);
+          if (aborted) controller.enqueue({ type: "error", errorText: TURN_ERROR_TEXT });
           if (persistFailed) controller.enqueue({ type: "error", errorText: PERSIST_ERROR_TEXT });
         },
       });

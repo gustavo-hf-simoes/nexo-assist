@@ -9,10 +9,10 @@ type StreamPart = Awaited<ReturnType<MockLanguageModelV4["doStream"]>>["stream"]
   ? P
   : never;
 
-// Um passo do roteiro = uma chamada ao modelo: texto, chamadas de tool, ou uma falha.
-export type ScriptStep =
-  | { text?: string; toolCalls?: ReadonlyArray<{ name: string; input: unknown }>; error?: never }
-  | { error: string };
+// Um passo do roteiro = uma chamada ao modelo: texto, chamadas de tool, uma falha, ou um modelo que não
+// responde (só termina quando o turno cancela a chamada).
+type ReplyStep = { text?: string; toolCalls?: ReadonlyArray<{ name: string; input: unknown }>; error?: never; hang?: never };
+export type ScriptStep = ReplyStep | { error: string; hang?: never } | { hang: true; error?: never };
 
 const USAGE = {
   inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
@@ -71,7 +71,7 @@ const DECISION_FALLBACK = {
 };
 
 // Roteiro padrão: decide o próximo passo pelo texto do usuário e pelas tools já executadas no turno.
-export function defaultStep(prompt: readonly PromptMessage[]): Exclude<ScriptStep, { error: string }> {
+export function defaultStep(prompt: readonly PromptMessage[]): ReplyStep {
   const text = lastUserText(prompt);
   const results = turnToolResults(prompt);
   const done = results.length;
@@ -124,7 +124,7 @@ export function defaultStep(prompt: readonly PromptMessage[]): Exclude<ScriptSte
   return { text: "Montei o rascunho do chamado abaixo. Confira os dados e confirme para eu abrir." };
 }
 
-function partsFor(step: Exclude<ScriptStep, { error: string }>, n: number): StreamPart[] {
+function partsFor(step: ReplyStep, n: number): StreamPart[] {
   const parts: StreamPart[] = [{ type: "stream-start", warnings: [] }];
   if (step.text) {
     parts.push({ type: "text-start", id: `t${n}` }, { type: "text-delta", id: `t${n}`, delta: step.text }, { type: "text-end", id: `t${n}` });
@@ -141,6 +141,13 @@ function partsFor(step: Exclude<ScriptStep, { error: string }>, n: number): Stre
   return parts;
 }
 
+// Modelo que não responde: a chamada só termina (com erro) quando o turno a cancela.
+function waitForAbort(signal: AbortSignal | undefined): Promise<never> {
+  return new Promise<never>((_, reject) => {
+    signal?.addEventListener("abort", () => reject(new Error("Chamada ao modelo cancelada.")), { once: true });
+  });
+}
+
 function scriptedModel(): MockLanguageModelV4 {
   return new MockLanguageModelV4({
     provider: "test",
@@ -151,6 +158,7 @@ function scriptedModel(): MockLanguageModelV4 {
       const step = script === null ? defaultStep(options.prompt as readonly PromptMessage[]) : script[n];
       if (!step) throw new Error("Roteiro do modelo esgotado.");
       if (step.error !== undefined) throw new Error(step.error);
+      if (step.hang) return waitForAbort(options.abortSignal);
       return { stream: convertArrayToReadableStream(partsFor(step, n)) };
     },
   });
