@@ -12,3 +12,7 @@ test-results/
 *.tsbuildinfo
 .DS_Store
 npm-debug.log*
+
+# PRD e protótipo do desafio: material do processo seletivo, fora do repositório público.
+docs/requisitos/
+docs/prototipo/
