@@ -78,8 +78,10 @@ export function createRoutes({ repository, now }: RoutesDeps): Hono {
   });
 
   routes.post("/tickets/:code/reopen", async (c) => {
+    // Chave opcional: com ela, repetir a reabertura é um replay em vez de um 409 not_resolved.
+    const key = c.req.header("Idempotency-Key")?.trim() || undefined;
     const { requesterId } = await readBody(c, WithRequester);
-    return c.json(await repository.reopen(c.req.param("code"), requesterId, now()));
+    return c.json(await repository.reopen(c.req.param("code"), requesterId, now(), key));
   });
 
   routes.post("/tickets/:code/transfer", async (c) => {

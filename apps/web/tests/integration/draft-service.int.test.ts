@@ -223,7 +223,7 @@ describe("rascunhos de chamado (Postgres real, gateway falso)", () => {
     const reopen = await newDraft({ kind: "reopen", targetTicketCode: "INC-20150" });
     const reopened = await service.confirm(reopen.id, "ana.souza");
     expect(reopened.ticket).toMatchObject({ code: "INC-20150", status: "aberto" });
-    expect(gateway.reopenCalls).toEqual([{ employeeId: "ana.souza", code: "INC-20150" }]);
+    expect(gateway.reopenCalls).toEqual([{ employeeId: "ana.souza", code: "INC-20150", idempotencyKey: reopen.id }]);
     expect(gateway.createCalls).toHaveLength(0);
   });
 });

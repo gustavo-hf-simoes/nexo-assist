@@ -217,6 +217,7 @@ describe("handoff_to_analyst", () => {
     );
     expect(result).toEqual({ ok: true, state: "waiting_analyst", queue: "N2", ticketTransferred: true });
     expect(gateway.transferCalls[0]).toMatchObject({ code: "INC-20311", input: { queue: "N2" } });
+    expect(gateway.transferCalls[0]?.idempotencyKey).toMatch(/^handoff:/);
     expect(conversations.state).toBe("waiting_analyst");
   });
 

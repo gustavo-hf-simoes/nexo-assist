@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import type { HandoffReason } from "../../conversations/conversation-state";
@@ -41,7 +42,9 @@ export function handoffToAnalystTool(deps: ToolDeps) {
       let ticketTransferred = false;
       if (input.ticketCode) {
         try {
-          await deps.gateway.transfer(employeeId, input.ticketCode, { queue, summary: input.summary });
+          // Mesma chamada de tool reaproveita a chave; fora do agent (sem toolCallId) gera uma nova.
+          const key = `handoff:${conversationId}:${context.agent?.toolCallId ?? randomUUID()}`;
+          await deps.gateway.transfer(employeeId, input.ticketCode, { queue, summary: input.summary }, key);
           ticketTransferred = true;
         } catch (error) {
           // A conversa já foi transferida; falha do serviço de chamados não desfaz isso.

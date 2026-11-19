@@ -96,8 +96,9 @@ export class FakeTicketGateway implements TicketGateway {
   createDelayMs = 0;
   readonly createCalls: Array<{ employeeId: string; input: CreateTicketInput; idempotencyKey: string }> = [];
   readonly commentCalls: Array<{ employeeId: string; code: string; body: string; idempotencyKey: string }> = [];
-  readonly reopenCalls: Array<{ employeeId: string; code: string }> = [];
-  readonly transferCalls: Array<{ employeeId: string; code: string; input: TransferInput }> = [];
+  readonly reopenCalls: Array<{ employeeId: string; code: string; idempotencyKey: string }> = [];
+  readonly transferCalls: Array<{ employeeId: string; code: string; input: TransferInput; idempotencyKey: string }> =
+    [];
   private readonly byKey = new Map<string, TicketDto>();
   private seq = 20520;
 
@@ -166,18 +167,18 @@ export class FakeTicketGateway implements TicketGateway {
     return this.find(employeeId, code);
   }
 
-  async reopen(employeeId: string, code: string): Promise<TicketDto> {
+  async reopen(employeeId: string, code: string, idempotencyKey: string): Promise<TicketDto> {
     this.guard();
-    this.reopenCalls.push({ employeeId, code });
+    this.reopenCalls.push({ employeeId, code, idempotencyKey });
     const ticket = this.find(employeeId, code);
     const reopened: TicketDto = { ...ticket, status: "aberto", resolvedAt: null };
     this.tickets = this.tickets.map((t) => (t.code === code ? reopened : t));
     return reopened;
   }
 
-  async transfer(employeeId: string, code: string, input: TransferInput): Promise<TicketDto> {
+  async transfer(employeeId: string, code: string, input: TransferInput, idempotencyKey: string): Promise<TicketDto> {
     this.guard();
-    this.transferCalls.push({ employeeId, code, input });
+    this.transferCalls.push({ employeeId, code, input, idempotencyKey });
     return this.find(employeeId, code);
   }
 }

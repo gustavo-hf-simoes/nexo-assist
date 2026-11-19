@@ -48,10 +48,12 @@ export async function confirmDraft(
   }
   if (handoff === "critical") {
     try {
-      await deps.gateway.transfer(employeeId, ticket.code, {
-        queue: "N2",
-        summary: `Chamado crítico ${ticket.code}: ${ticket.title}`,
-      });
+      await deps.gateway.transfer(
+        employeeId,
+        ticket.code,
+        { queue: "N2", summary: `Chamado crítico ${ticket.code}: ${ticket.title}` },
+        `critical:${draftId}`,
+      );
     } catch (error) {
       logFailure("falha ao enfileirar o chamado crítico no N2", error);
     }

@@ -91,7 +91,7 @@ export class DraftService {
       case "update":
         return this.gateway.addComment(employeeId, this.target(draft), payload.description, draft.id);
       case "reopen":
-        return this.gateway.reopen(employeeId, this.target(draft));
+        return this.gateway.reopen(employeeId, this.target(draft), draft.id);
     }
   }
 

@@ -148,6 +148,17 @@ describe("TicketRepository (Postgres real)", () => {
       expect(events[0]?.kind).toBe("reopen");
     });
 
+    it("repetir a reabertura com a mesma chave é um replay: um evento só, sem 409", async () => {
+      await repo.reopen("INC-20150", "ana.souza", NOW, "r-1");
+      const again = await repo.reopen("INC-20150", "ana.souza", NOW, "r-1");
+      expect(again.status).toBe("aberto");
+      const events = await db
+        .select()
+        .from(ticketEvents)
+        .where(eq(ticketEvents.ticketCode, "INC-20150"));
+      expect(events).toHaveLength(1);
+    });
+
     it("lança ReopenWindowExpiredError para resolvido há 8 dias", async () => {
       await db
         .update(tickets)
