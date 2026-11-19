@@ -1,14 +1,18 @@
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { DEFAULT_AGENT_MODEL } from "../src/server/agent/model";
+import { modelChainProblems, parseModelChain, providerKeyFor } from "../src/server/agent/provider-key";
 import { runScenario } from "./harness";
 import { renderReport, type ReportRow } from "./report";
+import { retryOnRateLimit } from "./retry";
 import { SCENARIOS } from "./scenarios";
 import { meetsThreshold, parseMinPassRate, passRate, scoreScenario } from "./score";
 
 const REPORT_PATH = new URL("./report.md", import.meta.url);
 const EXIT_BELOW_THRESHOLD = 1;
 const EXIT_BAD_CONFIG = 2;
+// Janela do limite por minuto do provedor: três tentativas cobrem um pico de tokens entre cenários.
+const RATE_LIMIT_RETRY = { attempts: 3, waitMs: 60_000 };
 
 function onlyFilter(argv: readonly string[]): string | undefined {
   const index = argv.indexOf("--only");
@@ -21,16 +25,15 @@ function pad(text: string, width: number): string {
 
 export async function main(argv: readonly string[] = process.argv.slice(2), env = process.env): Promise<number> {
   const modelId = env["NEXO_AGENT_MODEL"] || DEFAULT_AGENT_MODEL;
-  const usesTestModel = modelId.startsWith("test/");
+  const problems = modelChainProblems(modelId, env);
 
-  // Falha cedo, antes de qualquer chamada: o eval usa o Gemini de verdade e custa tokens.
-  if (!usesTestModel && !env["GOOGLE_GENERATIVE_AI_API_KEY"]) {
-    console.error(
-      "GOOGLE_GENERATIVE_AI_API_KEY não definida. O eval chama o Gemini de verdade (e gasta tokens): " +
-        "copie .env.example para .env, preencha a chave e rode `npm run eval` de novo.",
-    );
+  // Falha cedo, antes de qualquer chamada: o eval usa o modelo de verdade e consome a cota do provedor.
+  if (problems.length > 0) {
+    for (const problem of problems) console.error(`${problem.path}: ${problem.message}.`);
+    console.error("Copie .env.example para .env, preencha as chaves e rode `npm run eval` de novo.");
     return EXIT_BAD_CONFIG;
   }
+  const usesRealModel = parseModelChain(modelId).some((id) => providerKeyFor(id).kind === "key");
   let minPassRate: number;
   try {
     minPassRate = parseMinPassRate(env["EVAL_MIN_PASS_RATE"]);
@@ -50,7 +53,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2), env 
   const rows: ReportRow[] = [];
   for (const scenario of scenarios) {
     try {
-      const run = await runScenario(scenario, { modelId });
+      const run = await retryOnRateLimit(() => runScenario(scenario, { modelId }), RATE_LIMIT_RETRY);
       const result = scoreScenario(scenario, run.observed);
       rows.push({ name: scenario.name, ...result, tokens: run.tokens, ms: run.ms });
     } catch (error) {
@@ -70,7 +73,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2), env 
   console.log(`\nAprovação: ${(rate * 100).toFixed(0)}% (mínimo ${(minPassRate * 100).toFixed(0)}%). Média: ${average} tokens por cenário.`);
 
   // O relatório só é gravado numa execução completa com o modelo real; o modelo de teste não o sobrescreve.
-  if (!usesTestModel && only === undefined) {
+  if (usesRealModel && only === undefined) {
     writeFileSync(REPORT_PATH, renderReport({ modelId, generatedAt: new Date(), minPassRate, rows }), "utf-8");
     console.log("Relatório gravado em apps/web/evals/report.md");
   }

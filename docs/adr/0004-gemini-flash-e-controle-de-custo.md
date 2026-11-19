@@ -1,6 +1,6 @@
 # ADR 0004: Gemini Flash e controle de custo
 
-- Status: aceita
+- Status: aceita; a escolha do modelo foi substituída pela ADR 0007 (cadeia de modelos gratuitos)
 - Data: 2026-11-18
 
 ## Contexto
@@ -24,6 +24,6 @@ O agent faz vários passos de tool-calling por turno e atende conversas curtas d
 ## Consequências
 
 - O custo por conversa é limitado: no pior caso, 30 mensagens por sessão, 6 passos por turno e 20 mensagens de contexto. O README traz uma **estimativa** do custo, não um valor medido. A medição real sai do `npm run eval`, que imprime os tokens por cenário.
-- O modelo `test/scripted` é liberado por configuração e **não é bloqueado em produção**. É um trade-off aceito e registrado no README: quem controla o ambiente controla o modelo.
+- O modelo `test/scripted` é liberado por configuração só fora de produção: com `NODE_ENV=production`, a configuração o recusa e o app não sobe.
 - O limite de 30 mensagens conta por sessão de login, então um novo login zera a contagem. Também é um trade-off conhecido.
 - O id exato do modelo vigente deve ser confirmado ao fazer o deploy.
