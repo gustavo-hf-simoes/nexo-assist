@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { scriptedCallCount, setScript, type ScriptStep } from "../../src/server/agent/model";
 import { createNexoAgent } from "../../src/server/agent/nexo-agent";
 import { createNexoRequestContext, getRecordedDecision } from "../../src/server/agent/request-context";
-import { createTurnDeps, runTurn, type TurnDeps } from "../../src/server/agent/run-turn";
+import { createTurnDeps, runTurn, TURN_FAILED_NOTICE, type TurnDeps } from "../../src/server/agent/run-turn";
 import { ConversationService } from "../../src/server/conversations/conversation-service";
 import { createDb, type Database } from "../../src/server/db/client";
 import { runMigrations } from "../../src/server/db/migrate";
@@ -178,8 +178,23 @@ describe("turno do agent (Postgres real, modelo roteirizado)", () => {
     expect(result.kind).toBe("stream");
     expect(body).toContain("Não consegui");
     expect(body).not.toMatch(/falha interna|sk-secreta|node_modules/);
-    expect((await rowsOf(conv.id)).map((r) => r.author)).toEqual(["employee"]);
+    const rows = await rowsOf(conv.id);
+    expect(rows.map((r) => r.author)).toEqual(["employee", "system"]);
+    expect(rows[1]?.content).toBe(TURN_FAILED_NOTICE);
     expect(await db.select().from(decisionTraces)).toHaveLength(0);
+  });
+
+  it("modelo que não responde: o turno encerra no prazo, avisa em pt-BR e registra o aviso no histórico", async () => {
+    const conv = await current();
+    const startedAt = Date.now();
+    const { result, body } = await run("quanto tempo leva o chamado?", [{ hang: true }], { ...deps, turnTimeoutMs: 300 });
+    expect(result.kind).toBe("stream");
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    expect(body).toContain("Não consegui");
+    const rows = await rowsOf(conv.id);
+    expect(rows.map((r) => r.author)).toEqual(["employee", "system"]);
+    expect(rows[1]?.content).toBe(TURN_FAILED_NOTICE);
+    expect(await stateOf(conv.id)).toBe("agent");
   });
 
   it("cliente que desconecta no meio do stream: o turno termina e grava mensagem do agent e trace", async () => {
