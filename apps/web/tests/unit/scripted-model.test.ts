@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultStep, VPN_TRIGGER } from "@/server/agent/model";
+import { defaultStep, resolveModel, VPN_TRIGGER } from "@/server/agent/model";
 
 type Msg = { role: string; content: unknown };
 const user = (text: string): Msg => ({ role: "user", content: [{ type: "text", text }] });
@@ -43,5 +43,15 @@ describe("roteiro padrão do modelo de teste", () => {
   it("só conta as tools depois da última mensagem do usuário", () => {
     const prompt: Msg[] = [user(VPN_TRIGGER), toolResult({}), toolResult({}), user(VPN_TRIGGER)];
     expect(defaultStep(prompt).toolCalls?.[0]?.name).toBe("search_my_tickets");
+  });
+});
+
+describe("resolveModel", () => {
+  it("um modelo só vira o id; uma lista vira a cadeia de fallback, sem retry no mesmo modelo", () => {
+    expect(resolveModel("groq/openai/gpt-oss-120b")).toBe("groq/openai/gpt-oss-120b");
+    expect(resolveModel("groq/openai/gpt-oss-120b, google/gemini-3.5-flash-lite")).toEqual([
+      { model: "groq/openai/gpt-oss-120b", maxRetries: 0 },
+      { model: "google/gemini-3.5-flash-lite", maxRetries: 0 },
+    ]);
   });
 });

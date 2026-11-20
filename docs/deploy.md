@@ -1,6 +1,6 @@
 # Deploy
 
-Produção com custo zero: Vercel Hobby para os dois processos, Neon Free para o Postgres e o free tier da API do Gemini. Quem publica é o GitHub Actions; o deploy automático pelo Git da Vercel fica desligado (`git.deploymentEnabled: false`).
+Produção com custo zero: Vercel Hobby para os dois processos, Neon Free para o Postgres e o plano gratuito da Groq para o LLM. Quem publica é o GitHub Actions; o deploy automático pelo Git da Vercel fica desligado (`git.deploymentEnabled: false`).
 
 ## Topologia
 
@@ -9,7 +9,7 @@ Produção com custo zero: Vercel Hobby para os dois processos, Neon Free para o
 | `apps/web` (Next, chat, console, agent) | Vercel, projeto `nexo-assist`, região `gru1` | `vercel pull` + `vercel build --prod` + `vercel deploy --prebuilt --prod` |
 | `services/tickets` (Hono) | Vercel, projeto `nexo-tickets`, região `gru1` | `npm run build:vercel -w @nexo/tickets` (esbuild, Build Output API v3) + `vercel deploy --prebuilt --prod` |
 | Postgres | Neon, um projeto com os bancos `nexo_app` e `nexo_tickets` | runtime pela URL *pooled*; migração e seed pela URL direta |
-| LLM | Google AI Studio, projeto sem billing | variável `GOOGLE_GENERATIVE_AI_API_KEY` do projeto web |
+| LLM | Groq, plano gratuito (sem cartão) | variáveis `GROQ_API_KEY` e `NEXO_AGENT_MODEL` do projeto web |
 
 O serviço de chamados continua sendo um processo e um banco separados do agent. Ele é público na internet, mas toda rota fora de `/health` exige o Bearer `TICKET_SERVICE_TOKEN`.
 
@@ -45,7 +45,7 @@ Os jobs usam o environment `production` do GitHub, com estes segredos:
 
 `nexo-tickets`: `TICKETS_DATABASE_URL` (pooled), `TICKET_SERVICE_TOKEN`, `TICKET_SERVICE_FAILURE_RATE=0.05`, `TICKET_SERVICE_LATENCY_MS=0`, `DB_POOL_MAX=3`.
 
-`nexo-assist`: `APP_DATABASE_URL` (pooled), `TICKET_SERVICE_URL` (domínio de produção do `nexo-tickets`), `TICKET_SERVICE_TOKEN` (o mesmo), `SESSION_SECRET`, `GOOGLE_GENERATIVE_AI_API_KEY`, `NEXO_AGENT_MODEL`, `AGENT_MIN_CONFIDENCE=0.6`, `SESSION_MESSAGE_LIMIT=30`, `DAILY_LLM_TURN_LIMIT=150`, `DB_POOL_MAX=3`.
+`nexo-assist`: `APP_DATABASE_URL` (pooled), `TICKET_SERVICE_URL` (domínio de produção do `nexo-tickets`), `TICKET_SERVICE_TOKEN` (o mesmo), `SESSION_SECRET`, `GROQ_API_KEY`, `NEXO_AGENT_MODEL=groq/openai/gpt-oss-120b,groq/qwen/qwen3.8-27b,groq/openai/gpt-oss-20b`, `AGENT_MIN_CONFIDENCE=0.6`, `SESSION_MESSAGE_LIMIT=30`, `DAILY_LLM_TURN_LIMIT=150`, `DB_POOL_MAX=3`.
 
 O `env.ts` de cada processo valida tudo com zod na subida e falha cedo se faltar algo.
 
@@ -61,4 +61,4 @@ O `env.ts` de cada processo valida tudo com zod na subida e falha cedo se faltar
 - Cold start: o primeiro acesso depois de um tempo parado é mais lento (função e Neon acordando).
 - O plano Hobby da Vercel é para uso não comercial; serve para a demonstração.
 - O login é de demonstração: qualquer pessoa com um e-mail do seed entra, inclusive como analista.
-- Free tier do Gemini: tem limite por minuto e por dia. O `DAILY_LLM_TURN_LIMIT` fica abaixo dele, para o app avisar em vez de quebrar.
+- Plano gratuito da Groq: cada modelo tem limite por minuto e por dia (200 mil tokens/dia). A cadeia em `NEXO_AGENT_MODEL` passa ao próximo modelo quando um deles devolve 429, somando as cotas, e o `DAILY_LLM_TURN_LIMIT` fica abaixo da soma, para o app avisar em vez de quebrar. Sem cartão cadastrado, não há cobrança possível.

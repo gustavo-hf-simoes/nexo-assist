@@ -17,6 +17,9 @@ import { significantWords } from "./text";
 import { nowOf, TICKETS_UNAVAILABLE, type ToolDeps } from "./tool-deps";
 
 const MIN_SHARED_WORDS = 2;
+const DUPLICATE_NEXT_STEP =
+  "Compare cada candidato com o problema relatado. Mesmo problema: monte um rascunho kind update com targetCode do candidato. " +
+  "Problema diferente: chame prepare_ticket_draft de novo, igual, com notDuplicateOf listando esses códigos, sem perguntar ao funcionário.";
 
 // Abertos do mesmo tipo e da mesma categoria, ou com 2+ palavras significativas em comum no título.
 function findDuplicateCandidates(
@@ -61,7 +64,7 @@ export function prepareTicketDraftTool(deps: ToolDeps) {
           const open = await deps.gateway.listMine(employeeId, "open");
           const candidates = findDuplicateCandidates(open, input, input.notDuplicateOf ?? []);
           if (candidates.length > 0) {
-            return { ok: false as const, error: "duplicate_suspected" as const, candidates };
+            return { ok: false as const, error: "duplicate_suspected" as const, candidates, nextStep: DUPLICATE_NEXT_STEP };
           }
           const { priority, reason } = classifyPriority(input);
           payload = {

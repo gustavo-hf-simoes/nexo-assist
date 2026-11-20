@@ -143,6 +143,8 @@ describe("prepare_ticket_draft", () => {
     };
     expect(first).toMatchObject({ ok: false, error: "duplicate_suspected" });
     expect(first.candidates.map((c) => c.code)).toContain("INC-20311");
+    // A orientação vai no próprio resultado, para qualquer modelo saber o próximo passo.
+    expect(first).toMatchObject({ nextStep: expect.stringContaining("notDuplicateOf") });
     expect(drafts.created).toHaveLength(0);
 
     const second = (await run(tools.prepare_ticket_draft, { ...base, notDuplicateOf: ["INC-20311"] }, ctx)) as {

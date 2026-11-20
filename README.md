@@ -1,6 +1,6 @@
 # Nexo Assist
 
-Assistente de TI em chat. O funcionário descreve o problema, e um agent (Mastra + Google Gemini) abre e acompanha chamados em um serviço de chamados separado. Quando o caso foge do que o agent resolve, a conversa passa para um analista humano, que atende pelo console.
+Assistente de TI em chat. O funcionário descreve o problema, e um agent (Mastra + LLM com tool calling: Groq ou Gemini) abre e acompanha chamados em um serviço de chamados separado. Quando o caso foge do que o agent resolve, a conversa passa para um analista humano, que atende pelo console.
 
 ## Como rodar
 
@@ -13,7 +13,8 @@ cp .env.example .env        # passo manual
 
 Edite o `.env` e preencha:
 
-- `GOOGLE_GENERATIVE_AI_API_KEY`: chave do Google AI Studio.
+- `GOOGLE_GENERATIVE_AI_API_KEY`: chave do Google AI Studio, para modelos `google/...`.
+- `GROQ_API_KEY`: chave gratuita da Groq, para modelos `groq/...`. O deploy usa uma cadeia de três modelos gratuitos (ver "Modelo e custo").
 - `SESSION_SECRET`: no mínimo 32 caracteres. Gere com `openssl rand -base64 48`.
 
 Depois:
@@ -42,7 +43,7 @@ O `docker-compose.yml` publica o Postgres em `${POSTGRES_PORT:-5432}`, e as URLs
 | `npm run lint \| typecheck \| test \| build` | Qualidade, em todos os workspaces |
 | `npm run test:integration` | Testes com Testcontainers (precisa de Docker) |
 | `npm run e2e` | Playwright. Antes, rode `npx playwright install chromium`. O global-setup migra e popula os dois bancos (idempotente) e reinicia o usuário do E2E (diego.ramos) e a conversa de seed da Ana |
-| `npm run eval` | Avaliação das decisões do agent contra o Gemini real (ver abaixo) |
+| `npm run eval` | Avaliação das decisões do agent contra o modelo real (ver abaixo) |
 | `bash .github/scripts/test-hooks.sh` e `bash .github/scripts/check-forbidden-terms.sh` | Checagens da esteira |
 
 ## Deploy
@@ -74,7 +75,7 @@ O login é uma **autenticação de demonstração**: qualquer senha preenchida e
         |  HTTP + polling
         v
  apps/web (Next.js)
-   rotas de API --> agent (Mastra + Gemini, 8 tools)
+   rotas de API --> agent (Mastra + LLM, 8 tools)
         |                      |
         |                      +--> TicketGateway (porta)
         v                                 |  HTTP, Bearer, retry, Idempotency-Key
@@ -115,29 +116,33 @@ Os motivos estão em `docs/adr/`.
 - **Esteira:** lint, typecheck, testes, verificação de termos proibidos e dos hooks.
 - **Avaliação das decisões (eval):** 12 cenários em `apps/web/evals/scenarios.ts` conferem quais tools o agent chama, com quais argumentos, a intenção, o rascunho, a transferência e o texto da resposta.
 
-### Resultado do eval: ainda não rodado
+### Resultado do eval
 
-O eval **ainda não foi executado contra o Gemini**, por falta de chave no ambiente em que esta entrega foi feita. Não há taxa de acerto nem custo medido. O arquivo `apps/web/evals/report.md` é um marcador que diz isso. Para gerar o relatório real:
+Rodada completa em 19/11/2026 com a cadeia gratuita da Groq (`gpt-oss-120b` → `qwen3.8-27b` → `gpt-oss-20b`): **75% (9 de 12)**, abaixo do mínimo de 90%. Média de **9.773 tokens por cenário**.
+
+| Falha | Causa | Ajuste feito |
+|---|---|---|
+| 05: status do chamado do notebook lento | respondeu só com a busca, sem `get_ticket` (que traz o prazo) | regra: status sempre por `get_ticket` |
+| 07: senha do SAP bloqueada de novo | não montou o rascunho de reabertura nessa rodada (passou numa rodada isolada antes) | regra: reabrir sem pedir confirmação antes |
+| 08: Outlook parou de sincronizar | categoria `Software` em vez de `E-mail` | exemplos por categoria nas regras |
+
+Depois dos ajustes, o cenário 05 passou numa rodada isolada. Os cenários 07 e 08 ficaram sem nova rodada, porque a cota diária gratuita dos três modelos acabou no mesmo dia. **A taxa final depois dos ajustes ainda não foi medida.** As rodadas anteriores, com regras menos explícitas, deram 42% a 67% por modelo. A maior parte das falhas vinha de regras implícitas nas instruções, não do modelo.
+
+Para rodar:
 
 ```bash
 npm run eval -w @nexo/web
 ```
 
-O comando falha logo, com mensagem em pt-BR, se a chave não estiver definida. Com a chave, ele roda os 12 cenários, imprime o resultado de cada um e grava no `report.md` a taxa de acerto, os tokens e o tempo por cenário. O limite de aprovação é `EVAL_MIN_PASS_RATE` (padrão 0.9). A opção `--only <trecho>` roda só cenários cujo nome contém o trecho (essa execução parcial não grava o relatório).
+O comando falha logo, com mensagem em pt-BR, se faltar a chave de algum provedor da cadeia. Com as chaves, ele roda os 12 cenários e grava no `apps/web/evals/report.md` a taxa de acerto, os tokens e o tempo por cenário. O limite de aprovação é `EVAL_MIN_PASS_RATE` (padrão 0.9). A opção `--only <trecho>` roda só os cenários cujo nome contém o trecho e não grava o relatório. Um 429 por limite de minuto espera 60 s e tenta de novo, até 3 vezes; um limite diário não é repetido.
 
-O eval **não roda no CI**, porque exige uma chave real e cada execução tem custo em tokens, além de variar entre execuções. Ele deve ser rodado manualmente antes de mudar `instructions.ts` ou o modelo.
+O eval **não roda no CI**: exige chave real, consome a cota do provedor e varia entre execuções. Ele deve ser rodado manualmente antes de mudar `instructions.ts` ou o modelo. Ele usa a mesma cota gratuita da produção, então não convém rodá-lo várias vezes no dia.
 
-## Por que Gemini Flash e quanto custa
+## Modelo e custo
 
-O agent usa um modelo Flash do Gemini (`NEXO_AGENT_MODEL`, padrão `google/gemini-3.8-flash`): baixa latência, tool calling confiável e custo baixo para conversas curtas. Trocar de modelo é mudar uma variável. Detalhes no ADR 0004.
+O agent usa uma cadeia de modelos do plano gratuito da Groq, sem cartão, configurada em `NEXO_AGENT_MODEL` (lista separada por vírgula). Quando um modelo devolve 429 por cota, o próximo atende. Em produção, o `google/gemini-3.5-flash-lite` entra como último elo. Trocar de modelo ou de provedor é mudar só a variável. Detalhes e o desvio em relação ao requisito do Gemini estão na ADR 0007.
 
-**Custo por conversa: estimativa, não medição.** Fórmula:
-
-```
-custo = turnos x (tokens_entrada x preço_entrada + tokens_saída x preço_saída)
-```
-
-Premissas de forma (não medidas): conversa típica de 6 turnos; por turno, de 2 a 4 passos de tool-calling com cerca de 4.000 tokens de entrada somados e 400 de saída. Com preços **hipotéticos** de US$ 0,30 por milhão de tokens de entrada e US$ 2,50 por milhão de saída, isso dá algo na ordem de 6 x (0,0012 + 0,001) ≈ US$ 0,013 por conversa. Confira a tabela de preços vigente do modelo e substitua os números. O teto no pior caso é limitado por 30 mensagens por sessão, 6 passos por turno e 20 mensagens de contexto, além do `DAILY_LLM_TURN_LIMIT`. O `npm run eval` imprime os tokens reais por cenário, o que permite trocar esta estimativa por uma medida.
+**Custo: zero.** Nenhum provedor tem cartão ou billing ativo, então não há cobrança possível. O limite real é a cota diária: cerca de 200 mil tokens por modelo na Groq, o que dá umas 60 conversas curtas por dia somando os três modelos, com os 9.773 tokens medidos por cenário. O `DAILY_LLM_TURN_LIMIT` fica abaixo disso, para o app avisar em vez de falhar. Se fosse um modelo pago, o custo por conversa seria `tokens medidos x preço por token` do modelo escolhido.
 
 ## Trade-offs
 

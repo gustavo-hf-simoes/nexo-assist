@@ -1,8 +1,11 @@
+import type { ModelWithRetries } from "@mastra/core/agent";
 import type { MastraModelConfig } from "@mastra/core/llm";
 import { convertArrayToReadableStream, MockLanguageModelV4 } from "ai/test";
+import { parseModelChain } from "./provider-key";
 
-// Modelo padrão quando NEXO_AGENT_MODEL não está definido (Gemini Flash estável, via model router do Mastra).
-export const DEFAULT_AGENT_MODEL = "google/gemini-3.8-flash";
+// Modelo padrão quando NEXO_AGENT_MODEL não está definido: três modelos do plano gratuito da Groq, em cadeia,
+// para somar as cotas diárias sem custo (ver ADR 0007).
+export const DEFAULT_AGENT_MODEL = "groq/openai/gpt-oss-120b,groq/qwen/qwen3.8-27b,groq/openai/gpt-oss-20b";
 export const SCRIPTED_MODEL_ID = "test/scripted";
 
 type StreamPart = Awaited<ReturnType<MockLanguageModelV4["doStream"]>>["stream"] extends ReadableStream<infer P>
@@ -164,6 +167,14 @@ function scriptedModel(): MockLanguageModelV4 {
   });
 }
 
-export function resolveModel(id: string): MastraModelConfig {
+// Uma lista vira a cadeia de fallback do Mastra. Sem retry no mesmo modelo: um 429 de cota gratuita
+// não passa esperando, então o turno segue logo para o próximo e cabe no prazo de 45 s.
+export function resolveModel(id: string): MastraModelConfig | ModelWithRetries[] {
+  const ids = parseModelChain(id);
+  if (ids.length > 1) return ids.map((model) => ({ model: resolveSingle(model), maxRetries: 0 }));
+  return resolveSingle(ids[0] ?? id);
+}
+
+function resolveSingle(id: string): MastraModelConfig {
   return id === SCRIPTED_MODEL_ID ? scriptedModel() : id;
 }
