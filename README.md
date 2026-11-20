@@ -1,168 +1,197 @@
 # Nexo Assist
 
-Assistente de TI em chat ([demo](https://nexo-assist-amber.vercel.app)). O funcionário descreve o problema, e um agent (Mastra + LLM com tool calling: Groq ou Gemini) abre e acompanha chamados em um serviço de chamados separado. Quando o caso foge do que o agent resolve, a conversa passa para um analista humano, que atende pelo console.
+**Assistente de service desk de TI em chat.** O funcionário descreve o problema e um agent de IA resolve pela central de ajuda, consulta, abre ou atualiza chamados, e passa a conversa para um analista humano quando precisa.
 
-## Como rodar
+[![CI](https://github.com/gustavo-hf-simoes/nexo-assist/actions/workflows/ci.yml/badge.svg)](https://github.com/gustavo-hf-simoes/nexo-assist/actions/workflows/ci.yml)
+[![Deploy](https://github.com/gustavo-hf-simoes/nexo-assist/actions/workflows/deploy.yml/badge.svg)](https://github.com/gustavo-hf-simoes/nexo-assist/actions/workflows/deploy.yml)
+
+**Demo:** https://nexo-assist-amber.vercel.app
+
+Stack: TypeScript strict · Next.js 16 · Mastra · Hono · PostgreSQL · Vitest, Testcontainers e Playwright · Vercel + Neon · GitHub Actions
+
+---
+
+## Testar em 2 minutos
+
+Entre com qualquer senha não vazia. Para ver os dois lados ao mesmo tempo, abra o funcionário numa janela normal e o analista numa janela anônima.
+
+| Perfil | E-mail | O que testar |
+|---|---|---|
+| Funcionária | `ana.souza@nexo.com.br` | "A VPN dá erro 809 no Windows 11" (abre rascunho de chamado) · "Como está meu chamado do notebook?" (chamado vencido, oferece analista) · "Quero falar com um analista" |
+| Analista | `rafael.lima@nexo.com.br` | Abrir a conversa da Ana no console · **Assumir** (o agent pausa) · responder · **Devolver ao agent** ou **Encerrar** |
+
+A demo usa cota gratuita de LLM, com limite diário de turnos e de 30 mensagens por sessão (ver [Modelo e custo](#modelo-e-custo)).
+
+## Destaques
+
+- **Regras fora da LLM.** Prioridade, prazo (SLA em horário útil), duplicidade, reabertura e privacidade são calculados em código ([`packages/domain`](packages/domain)). A LLM só informa os fatos.
+- **O chamado só nasce pela UI.** O agent monta um rascunho e o funcionário confirma. A criação é idempotente (`Idempotency-Key = draft.id`): confirmar duas vezes gera no máximo um chamado.
+- **A decisão fica visível.** Cada resposta mostra o que o agent entendeu, a ação, a confiança e a justificativa.
+- **O analista tem o controle.** Ele pode assumir qualquer conversa; o agent pausa na hora, mesmo no meio de um turno.
+- **Privacidade.** O `employeeId` vem só da sessão. Chamado de outra pessoa responde "não encontrado".
+- **Custo zero.** Modelos do plano gratuito, sem billing ativo, com limites contra abuso.
+
+## Arquitetura
+
+```mermaid
+flowchart LR
+    U["Funcionário<br/>(chat)"] --> W
+    A["Analista<br/>(console)"] --> W
+
+    subgraph W["apps/web · Next.js"]
+        R["Rotas de API"] --> AG["Agent Mastra<br/>8 tools"]
+        AG --> D["packages/domain<br/>prioridade, SLA, reabertura"]
+    end
+
+    AG -- "HTTP · Bearer · retry<br/>Idempotency-Key" --> T["services/tickets<br/>Hono"]
+    AG --> LLM["LLM<br/>Groq → Gemini"]
+    R --> DB1[("Postgres<br/>nexo_app<br/>conversas, rascunhos, traces")]
+    T --> DB2[("Postgres<br/>nexo_tickets<br/>chamados")]
+```
+
+O app e o serviço de chamados são **processos e bancos separados**. Conversas, chamados e o estado de cada conversa sobrevivem a reinício.
+
+| Pasta | Responsabilidade |
+|---|---|
+| [`apps/web`](apps/web) | Chat, console do analista, rotas de API e agent |
+| [`services/tickets`](services/tickets) | Serviço de chamados simulado, com falha injetável para exercitar o retry |
+| [`packages/domain`](packages/domain) | Regras de negócio puras: tipos, categorias, prioridade, SLA, reabertura |
+
+## Como o agent decide
+
+```mermaid
+sequenceDiagram
+    participant F as Funcionário
+    participant API as Rota /api/chat
+    participant AG as Agent
+    participant TK as Serviço de chamados
+
+    F->>API: mensagem
+    API->>API: sessão, limite de 30, estado da conversa
+    API->>AG: últimas 20 mensagens (lidas do banco)
+    AG->>TK: tools (buscar, consultar, preparar rascunho)
+    AG->>AG: record_decision (intenção, ação, confiança)
+    AG-->>F: resposta + cards + decisão visível
+    F->>API: confirma o rascunho (botão da UI)
+    API->>TK: cria o chamado (idempotente)
+```
+
+**Tools:** `search_my_tickets`, `get_ticket`, `search_help_center`, `classify_priority`, `prepare_ticket_draft`, `present_choices`, `handoff_to_analyst`, `record_decision`.
+
+**Quando a conversa vai para o analista:** quando o funcionário pede, em caso crítico, em chamado vencido ou quando a confiança fica abaixo de 0.6. A transferência leva um resumo do caso.
+
+```mermaid
+stateDiagram-v2
+    [*] --> agent
+    agent --> waiting_analyst: transferência
+    agent --> analyst: analista assume
+    waiting_analyst --> analyst: analista assume
+    waiting_analyst --> agent: devolve ao agent
+    analyst --> agent: devolve ao agent
+    agent --> closed: encerra
+    waiting_analyst --> closed: encerra
+    analyst --> closed: encerra
+```
+
+Enquanto a conversa está em `waiting_analyst` ou `analyst`, o agent não responde.
+
+## Qualidade
+
+| Camada | O que cobre | Onde |
+|---|---|---|
+| Unitários | Regras de domínio, tools, mapeamento do chat, componentes. O agent roda sem rede, com um modelo roteirizado | `apps/web/tests/unit`, `packages/domain/tests`, `services/tickets/tests` |
+| Integração | Repositórios e serviço de chamados contra Postgres real (Testcontainers): idempotência, privacidade, estados da conversa | `apps/web/tests/integration` |
+| E2E | Fluxo completo do chat e do console no navegador (Playwright) | [`apps/web/tests/e2e`](apps/web/tests/e2e) |
+| Esteira | Lint, typecheck, build, termos proibidos, hooks. O deploy só roda se tudo passar | [`.github/workflows`](.github/workflows) |
+
+### Eval: as decisões do agent contra o modelo real
+
+Os 12 cenários de [`apps/web/evals/scenarios.ts`](apps/web/evals/scenarios.ts) conferem as tools chamadas, os argumentos, o rascunho, a transferência e o texto da resposta.
+
+**Resultado: 9 de 12 (75%)**, numa rodada completa em 19/11/2026, com uma média de 9.773 tokens por cenário. O relatório gerado pela ferramenta, com tokens e tempo por cenário, está em [`apps/web/evals/report.md`](apps/web/evals/report.md).
+
+| Cenário reprovado | Causa | Correção |
+|---|---|---|
+| 05: chamado vencido do notebook | Respondeu com a busca, sem `get_ticket` (que traz o prazo) | Regra: status sempre por `get_ticket` |
+| 07: senha do SAP bloqueada de novo | Não montou o rascunho de reabertura | Regra: reabrir sem pedir confirmação antes |
+| 08: Outlook sem sincronizar | Categoria `Software` em vez de `E-mail` | Exemplos por categoria nas instruções |
+
+As três correções estão no commit [`864f28f`](https://github.com/gustavo-hf-simoes/nexo-assist/commit/864f28f), com testes. Depois delas, o cenário 05 passou numa rodada isolada. **A rodada completa não foi repetida, por escolha.** Cada rodada gasta cerca de 117 mil tokens, mais da metade da cota diária gratuita, e a chave é a mesma da demo. O PRD não pede eval; ele foi usado como ferramenta de calibragem. Por isso não roda no CI nem no deploy, só à mão:
+
+```bash
+npm run eval -w @nexo/web            # rodada completa, regrava o report.md
+npm run eval -w @nexo/web -- --only "VPN"   # só os cenários com o trecho no nome
+```
+
+## Modelo e custo
+
+| Item | Escolha |
+|---|---|
+| Modelo | Uma cadeia de modelos gratuitos da Groq (`gpt-oss-120b` → `qwen3.8-27b` → `gpt-oss-20b`), com `gemini-3.5-flash-lite` como último recurso. Se um devolve 429, o próximo responde |
+| Troca de modelo | Só a variável `NEXO_AGENT_MODEL`, sem mudar código ([ADR 0007](docs/adr/0007-cadeia-de-modelos-gratuitos.md)) |
+| Custo | Zero: nenhum provedor tem billing ativo |
+| Proteção | Limite diário de turnos e de 30 mensagens por sessão, guardados no banco, e rate limit de login |
+
+Os limites existem porque a demo usa cota gratuita. Em produção, basta trocar a chave por uma de modelo pago e ajustar ou remover os limites pelas variáveis de ambiente.
+
+## Rodar localmente
 
 Pré-requisitos: Node 22.9 ou superior, Docker e npm.
 
 ```bash
 npm ci
-cp .env.example .env        # passo manual
+cp .env.example .env      # preencha GROQ_API_KEY e/ou GOOGLE_GENERATIVE_AI_API_KEY, e SESSION_SECRET (32+ caracteres)
+npm run db:up             # Postgres no Docker
+npm run db:migrate        # os dois bancos
+npm run db:seed           # usuários, artigos e chamados de exemplo
 ```
 
-Edite o `.env` e preencha:
-
-- `GOOGLE_GENERATIVE_AI_API_KEY`: chave do Google AI Studio, para modelos `google/...`.
-- `GROQ_API_KEY`: chave gratuita da Groq, para modelos `groq/...`. O deploy usa uma cadeia de três modelos gratuitos (ver "Modelo e custo").
-- `SESSION_SECRET`: no mínimo 32 caracteres. Gere com `openssl rand -base64 48`.
-
-Depois:
-
-```bash
-npm run db:up        # Postgres no Docker (volume nomeado)
-npm run db:migrate   # migra os dois bancos (app e chamados)
-npm run db:seed      # usuários, artigos da central e chamados de exemplo
-```
-
-Suba os dois processos, cada um em um terminal (o `npm run dev` da raiz roda os workspaces em sequência e ficaria preso no primeiro):
+Em dois terminais:
 
 ```bash
 npm run dev -w @nexo/tickets   # serviço de chamados
-npm run dev -w @nexo/web       # chat, console e agent
+npm run dev -w @nexo/web       # http://localhost:3000
 ```
 
-### Porta do Postgres
-
-O `docker-compose.yml` publica o Postgres em `${POSTGRES_PORT:-5432}`, e as URLs do `.env.example` usam 5432. Se a 5432 já estiver ocupada na sua máquina, defina `POSTGRES_PORT=5433` e troque a porta nas duas URLs de banco do `.env`. O E2E local (`playwright.config.ts`) assume 5433, a menos que você defina `E2E_DB_PORT`. No CI a porta é 5432.
-
-### Comandos
-
 | Comando | O que faz |
-| --- | --- |
-| `npm run lint \| typecheck \| test \| build` | Qualidade, em todos os workspaces |
-| `npm run test:integration` | Testes com Testcontainers (precisa de Docker) |
-| `npm run e2e` | Playwright. Antes, rode `npx playwright install chromium`. O global-setup migra e popula os dois bancos (idempotente) e reinicia o usuário do E2E (diego.ramos) e a conversa de seed da Ana |
-| `npm run eval` | Avaliação das decisões do agent contra o modelo real (ver abaixo) |
-| `bash .github/scripts/test-hooks.sh` e `bash .github/scripts/check-forbidden-terms.sh` | Checagens da esteira |
+|---|---|
+| `npm run lint \| typecheck \| test \| build` | Qualidade em todos os workspaces |
+| `npm run test:integration` | Integração com Testcontainers (precisa de Docker) |
+| `npm run e2e` | Playwright (antes: `npx playwright install chromium`) |
 
-## Deploy
+Se a porta 5432 estiver ocupada, defina `POSTGRES_PORT=5433` e troque a porta nas URLs do `.env`.
 
-**Demo:** https://nexo-assist-amber.vercel.app. Entre como `ana.souza@nexo.com.br` (funcionária) ou `rafael.lima@nexo.com.br` (analista), com qualquer senha não vazia. Use duas janelas, uma delas anônima, para ver o chat e o console ao mesmo tempo.
+### Dados de exemplo
 
-Produção na Vercel (web e serviço de chamados em projetos separados) com Postgres no Neon, publicada por GitHub Actions depois que a CI passa na `main` (`.github/workflows/deploy.yml`). Topologia, segredos e trade-offs em [docs/deploy.md](docs/deploy.md).
+9 usuários, 9 artigos da central de ajuda e 7 chamados em situações variadas: aberto, vencido, resolvido há poucos dias e de outros funcionários.
 
-## Usuários de exemplo
-
-O e-mail é `<id>@nexo.com.br`. A senha pode ser qualquer texto não vazio.
-
-| Id | Perfil |
-| --- | --- |
-| ana.souza | Funcionária, Windows 11, Financeiro |
-| carla.mendes | Funcionária, RH, Windows 11 |
-| bruno.tavares | Funcionário, macOS 14 |
-| diego.ramos | Funcionário, Ubuntu 22.04, Engenharia |
-| elisa.prado | Funcionária, Windows 11 |
-| fabio.nunes | Funcionário, Windows 10, Logística |
-| gabriela.rocha | Funcionária, Windows 11, Jurídico |
+| Id (`<id>@nexo.com.br`) | Perfil |
+|---|---|
+| ana.souza, carla.mendes, bruno.tavares, diego.ramos, elisa.prado, fabio.nunes, gabriela.rocha | Funcionários (Windows, macOS e Linux) |
 | rafael.lima | Analista N1 |
 | julia.castro | Analista N2 |
 
-O login é uma **autenticação de demonstração**: qualquer senha preenchida entra com um e-mail do seed. Não é autenticação de produção.
+## Deploy
 
-## Arquitetura
+A web e o serviço de chamados ficam em dois projetos na Vercel, com Postgres no Neon. O GitHub Actions publica depois que a CI passa na `main`: migra, popula o banco e faz o deploy dos dois. Topologia, segredos e trade-offs estão em [docs/deploy.md](docs/deploy.md).
 
-```
- Navegador (chat do funcionário / console do analista)
-        |  HTTP + polling
-        v
- apps/web (Next.js)
-   rotas de API --> agent (Mastra + LLM, 8 tools)
-        |                      |
-        |                      +--> TicketGateway (porta)
-        v                                 |  HTTP, Bearer, retry, Idempotency-Key
-   Postgres nexo_app                      v
-   (conversas, mensagens,        services/tickets (Hono)
-    rascunhos, traces)             Postgres nexo_tickets
-                                   (chamados, falha injetável)
+## Decisões e trade-offs
 
- packages/domain: tipos, categorias, prioridade e SLA (TypeScript puro)
-```
-
-O app e o serviço de chamados são processos e bancos distintos. Conversas, chamados e estado sobrevivem a reinício.
-
-## Como o agent decide
-
-**Fluxo de um turno**
-
-1. A rota recebe a mensagem, confere sessão, limite de 30 mensagens e o estado da conversa. Se a conversa está com o analista, o agent não responde.
-2. O servidor carrega as últimas 20 mensagens do banco (o cliente nunca manda histórico) e chama o agent com `maxSteps: 6`.
-3. O agent usa as tools, responde em pt-BR e encerra chamando `record_decision` (intenção, entendimento, ação, confiança e justificativa).
-4. O servidor persiste a resposta, os cards e o trace da decisão.
-
-**Tools:** `search_my_tickets`, `get_ticket`, `search_help_center`, `classify_priority`, `prepare_ticket_draft`, `present_choices`, `handoff_to_analyst`, `record_decision`.
-
-**Regras fora da LLM.** A LLM informa fatos; prioridade, prazo, reabertura e duplicidade são calculados em código (`packages/domain`). O `employeeId` vem só da sessão. Chamado de outro usuário responde "não encontrado".
-
-**Confirmação só pela UI.** O agent apenas monta rascunhos. O chamado nasce em `POST /api/drafts/:id/confirm`, com `Idempotency-Key = draft.id`: confirmar duas vezes gera no máximo um chamado (409 depois).
-
-**Política de confiança.** Confiança abaixo de 0.6 transfere a conversa para o analista. Também há transferência a pedido do usuário, para chamado crítico e para chamado vencido.
-
-Os motivos estão em `docs/adr/`.
-
-## Como a qualidade foi garantida
-
-- **Unitários:** regras de domínio (prioridade, SLA, reabertura), tools, mapeamento do chat, avaliador e runner do eval. O agent roda sem rede com o modelo roteirizado.
-- **Integração:** repositórios e o serviço de chamados contra Postgres real, com Testcontainers.
-- **E2E:** Playwright cobre o fluxo do chat e do console com o modelo roteirizado.
-- **Esteira:** lint, typecheck, testes, verificação de termos proibidos e dos hooks.
-- **Avaliação das decisões (eval):** 12 cenários em `apps/web/evals/scenarios.ts` conferem quais tools o agent chama, com quais argumentos, a intenção, o rascunho, a transferência e o texto da resposta.
-
-### Resultado do eval
-
-Rodada completa em 19/11/2026 com a cadeia gratuita da Groq (`gpt-oss-120b` → `qwen3.8-27b` → `gpt-oss-20b`): **75% (9 de 12)**, abaixo do mínimo de 90%. Média de **9.773 tokens por cenário**.
-
-| Falha | Causa | Ajuste feito |
+| Decisão | Por quê | Custo |
 |---|---|---|
-| 05: status do chamado do notebook lento | respondeu só com a busca, sem `get_ticket` (que traz o prazo) | regra: status sempre por `get_ticket` |
-| 07: senha do SAP bloqueada de novo | não montou o rascunho de reabertura nessa rodada (passou numa rodada isolada antes) | regra: reabrir sem pedir confirmação antes |
-| 08: Outlook parou de sincronizar | categoria `Software` em vez de `E-mail` | exemplos por categoria nas regras |
+| Um agent com tools, busca full-text ([ADR 0001](docs/adr/0001-agent-unico-com-tools.md)) | Poucos artigos; RAG vetorial seria excesso | Não escala para uma base grande |
+| Regras no domínio ([ADR 0002](docs/adr/0002-regras-deterministicas-fora-da-llm.md)) | Determinismo e testes sem LLM | Mais código que um prompt |
+| Confirmação só pela UI ([ADR 0003](docs/adr/0003-confirmacao-so-pela-ui.md)) | A LLM nunca cria chamado sozinha | Um clique a mais |
+| Histórico próprio no Postgres ([ADR 0005](docs/adr/0005-historico-proprio-sem-mastra-memory.md)) | Controle do que o modelo vê; o cliente nunca manda histórico | Janela de 20 mensagens |
+| Serviço de chamados separado ([ADR 0006](docs/adr/0006-servico-de-chamados-separado-e-resiliente.md)) | Simula o legado instável, com retry e idempotência | Dois processos para subir |
+| Polling em vez de WebSocket | Simples e compatível com serverless | Alguma latência |
+| Login de demonstração | O PRD aceita qualquer senha | Não serve para produção |
+| SLA sem feriados | Fora do escopo do PRD | Prazos em feriados ficam curtos |
 
-Depois dos ajustes, o cenário 05 passou numa rodada isolada. Os cenários 07 e 08 não foram medidos de novo. **A taxa final depois dos ajustes não foi medida, e foi uma escolha.** As rodadas anteriores, com regras menos explícitas, deram 42% a 67% por modelo. A maior parte das falhas vinha de regras implícitas nas instruções, não do modelo.
+## Próximos passos
 
-**Por que o eval parou aqui.** O PRD não pede eval: ele pede "uso consciente do modelo, pensando em custo por conversa". O eval é uma ferramenta de desenvolvimento, usada para calibrar as instruções. Cada rodada completa gasta cerca de 117 mil tokens (12 cenários x 9.773), mais de metade da cota diária gratuita de um modelo da Groq. Como a chave é a mesma da demo, rodar o eval tira cota de quem está testando o app. Prioridade: a cota fica para a avaliação manual e para a demo. O código continua no repositório, mas o eval não roda no CI, no deploy nem em nenhum ambiente publicado; só roda quando alguém executa o comando abaixo à mão.
-
-Para rodar (de preferência com uma chave separada da demo):
-
-```bash
-npm run eval -w @nexo/web
-```
-
-O comando falha logo, com mensagem em pt-BR, se faltar a chave de algum provedor da cadeia. Com as chaves, ele roda os 12 cenários e grava no `apps/web/evals/report.md` a taxa de acerto, os tokens e o tempo por cenário. O limite de aprovação é `EVAL_MIN_PASS_RATE` (padrão 0.9). A opção `--only <trecho>` roda só os cenários cujo nome contém o trecho e não grava o relatório, o que custa uma fração da rodada completa. Um 429 por limite de minuto espera 60 s e tenta de novo, até 3 vezes; um limite diário não é repetido.
-
-## Modelo e custo
-
-O agent usa uma cadeia de modelos do plano gratuito da Groq, sem cartão, configurada em `NEXO_AGENT_MODEL` (lista separada por vírgula). Quando um modelo devolve 429 por cota, o próximo atende. Em produção, o `google/gemini-3.5-flash-lite` entra como último elo. Trocar de modelo ou de provedor é mudar só a variável. Detalhes e o desvio em relação ao requisito do Gemini estão na ADR 0007.
-
-**Custo: zero.** Nenhum provedor tem cartão ou billing ativo, então não há cobrança possível. O limite real é a cota diária: cerca de 200 mil tokens por modelo na Groq, o que dá umas 60 conversas curtas por dia somando os três modelos, com os 9.773 tokens medidos por cenário. O `DAILY_LLM_TURN_LIMIT` fica abaixo disso, para o app avisar em vez de falhar. Se fosse um modelo pago, o custo por conversa seria `tokens medidos x preço por token` do modelo escolhido.
-
-## Trade-offs
-
-- **Login de demonstração:** qualquer senha não vazia com um e-mail do seed. Não serve para produção.
-- **Limite de 30 mensagens por sessão de login:** um novo login zera a contagem.
-- **Feriados:** o SLA em horário útil (seg-sex, 08:00-18:00, `America/Sao_Paulo`) ignora feriados.
-- **`NEXO_AGENT_MODEL=test/scripted`:** modelo roteirizado, só para testes e E2E. A configuração o recusa quando `NODE_ENV=production` (falha ao subir). O E2E usa `next dev`, então não é afetado.
-- **Polling em vez de WebSocket:** o chat e o console consultam o servidor periodicamente. Mais simples, com alguma latência.
-- **Rate limit de login em memória:** 5 falhas em 60 s, por processo. Reinicia com o processo e não é compartilhado entre instâncias.
-- **Busca full-text em vez de RAG:** a central tem poucos artigos (ADR 0001).
-- **Histórico de 20 mensagens:** conversas longas perdem o começo.
-- **Dois processos em desenvolvimento:** o `npm run dev` da raiz não sobe os dois juntos.
-
-## O que eu faria com mais tempo
-
-- Medir a taxa final do eval com uma chave só para ele, sem tocar na cota da demo.
-- Medir tokens e custo reais por conversa e trocar a estimativa por dados.
-- Autenticação real (SSO) e rate limit compartilhado (Redis ou banco).
-- Calendário de feriados no cálculo de SLA.
-- WebSocket ou SSE no lugar do polling.
-- Um comando único que suba os dois serviços de desenvolvimento.
+- Repetir o eval completo com uma chave separada da demo e manter a meta de 90% ou mais.
+- Avaliar o OpenRouter com vários modelos gratuitos, mantendo só os que passarem num corte de precisão no eval.
+- Medir tokens e custo reais por conversa em produção.
+- SSO e rate limit compartilhado (Redis ou banco).
+- SSE ou WebSocket no lugar do polling, e calendário de feriados no SLA.
