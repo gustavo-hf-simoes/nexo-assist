@@ -2,6 +2,7 @@
 
 import type { TicketDto } from "@nexo/domain";
 import { Avatar } from "@/components/ui/avatar";
+import { plainText } from "@/lib/format";
 import { ActionChips } from "./action-chips";
 import { chipsFromParts, chipsFromTrace, findTool, isRecord, partsOf, textOf, type RawPart } from "./chat-parts";
 import type { ChatMessage, DraftView } from "./chat-types";
@@ -49,7 +50,7 @@ export function AgentMessage({ message, drafts, draftUi, active, onChoose, now }
   const parts = partsOf(message);
   const isAnalyst = message.metadata?.author === "analyst";
   const name = isAnalyst ? (message.metadata?.authorName ?? "Analista") : "Nexo Assist";
-  const text = textOf(message);
+  const text = plainText(textOf(message));
   const trace = message.metadata?.trace;
   const chips = trace ? chipsFromTrace(trace.tools) : chipsFromParts(parts);
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { textOf } from "@/components/chat/chat-parts";
 import { toChatMessage } from "@/components/chat/chat-types";
-import { formatTime, handoffReasonLabel } from "@/lib/format";
+import { formatTime, handoffReasonLabel, plainText } from "@/lib/format";
 import type { ConsoleDetail } from "@/server/conversations/console-queries";
 import type { UiMessage } from "@/server/conversations/ui-messages";
 import { DecisionInline } from "./decision-inline";
@@ -37,6 +37,7 @@ function MessageRow({ message }: { message: UiMessage }) {
   }
   const isAgent = message.author === "agent";
   if (isAgent && text === "" && !message.trace) return null;
+  const shown = isAgent ? plainText(text) : text;
   return (
     <div className="flex max-w-[75%] flex-col items-end gap-1 self-end">
       <div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-ink-soft">
@@ -49,7 +50,7 @@ function MessageRow({ message }: { message: UiMessage }) {
             isAgent ? "border border-brand/10 bg-brand-tint text-ink" : "bg-brand text-white"
           }`}
         >
-          {text}
+          {shown}
           <Time iso={message.createdAt} />
         </p>
       ) : null}
