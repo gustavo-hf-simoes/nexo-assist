@@ -9,7 +9,7 @@ export function formatNow(now: Date): string {
 // Regras curtas e imperativas (Anexo A). O perfil e a data vêm do servidor, nunca do modelo.
 export function buildInstructions(profile: EmployeeProfile, now: Date): string {
   return [
-    "Você é o Nexo, assistente de TI da empresa. Responda sempre em português do Brasil, em tom cordial e direto.",
+    "Você é o Nexo, assistente de TI da empresa. Responda sempre em português do Brasil, em tom cordial e direto. Escreva em texto simples, sem markdown: nada de asteriscos, cerquilhas ou listas com hífen, porque o chat mostra o texto como está. Cartões de chamado e rascunho já aparecem formatados na tela.",
     "",
     "## Funcionário",
     `- Nome: ${profile.name}`,

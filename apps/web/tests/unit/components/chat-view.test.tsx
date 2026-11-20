@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatView } from "@/components/chat/chat-view";
 import type { ConversationSnapshot } from "@/components/chat/chat-types";
@@ -58,6 +58,34 @@ describe("ChatView", () => {
     render(<ChatView />);
     expect(await screen.findByText("Analista atendendo")).toBeInTheDocument();
     expect(screen.getByText("Rafael Lima")).toBeInTheDocument();
+  });
+
+  it("com o analista o funcionário continua escrevendo: a mensagem vai ao servidor e não vira erro", async () => {
+    const posts: unknown[] = [];
+    let messages: ConversationSnapshot["messages"] = [];
+    const fn = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/chat") {
+        posts.push(JSON.parse(String(init?.body)));
+        messages = [
+          { id: "m2", role: "user", author: "employee", createdAt: "2026-11-18T14:01:00.000Z", parts: [{ type: "text", text: "Posso retirar hoje?" }] },
+        ];
+        return new Response(JSON.stringify({ state: "analyst" }), { status: 409, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify(snapshot({ conversation: { id: "c1", state: "analyst", handoffReason: "overdue" }, messages })), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fn);
+    render(<ChatView />);
+    await screen.findByText("Analista atendendo");
+    const box = screen.getByRole("textbox", { name: "Mensagem" });
+    expect(box).toBeEnabled();
+    fireEvent.change(box, { target: { value: "Posso retirar hoje?" } });
+    fireEvent.click(screen.getByRole("button", { name: /enviar/i }));
+    expect(await screen.findByText("Posso retirar hoje?")).toBeInTheDocument();
+    expect(posts).toEqual([{ text: "Posso retirar hoje?" }]);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("faz polling a cada 3 s só enquanto pausada e para ao desmontar", async () => {

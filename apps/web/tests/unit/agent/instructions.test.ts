@@ -32,4 +32,9 @@ describe("buildInstructions", () => {
     expect(text).toMatch(/E-mail \(Outlook/);
     expect(text).toMatch(/search_my_tickets não traz prazo/);
   });
+
+  it("pede texto simples, sem markdown, porque o chat não formata", () => {
+    const text = buildInstructions(profile, new Date("2026-11-19T12:00:00Z"));
+    expect(text).toMatch(/texto simples, sem markdown/);
+  });
 });

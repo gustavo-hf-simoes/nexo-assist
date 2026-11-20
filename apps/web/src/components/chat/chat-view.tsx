@@ -126,9 +126,13 @@ export function ChatView() {
     };
   }, [apply]);
 
-  // Polling só enquanto o analista está com a conversa; para ao desmontar e quando volta ao agent.
+  // Polling só enquanto o analista está com a conversa (traz as respostas dele); para ao desmontar e quando volta ao agent.
   const state = snapshot?.conversation.state ?? "agent";
   const paused = PAUSED_STATES.includes(state);
+  const pausedRef = useRef(paused);
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
   useEffect(() => {
     if (!paused) return;
     const timer = setInterval(() => {
@@ -142,6 +146,24 @@ export function ChatView() {
   const limit = snapshot?.quota.limit ?? 30;
   const limitReached = snapshot !== null && used >= limit;
 
+  // Com o analista o agent não roda: a mensagem só é gravada (o servidor responde 409 com o estado)
+  // e aparece no console. Por isso vai por fetch direto, sem o stream do useChat.
+  const sendToAnalyst = useCallback(async (text: string) => {
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      // 200: a conversa voltou ao agent no meio do caminho; espera o turno terminar antes de recarregar.
+      if (response.ok) await response.text();
+      else if (response.status !== 409) setChatError(classifyChatError(new Error(await response.text())));
+    } catch (error) {
+      setChatError(classifyChatError(error));
+    }
+    await refreshRef.current(true);
+  }, []);
+
   const send = useCallback(
     (text: string) => {
       const trimmed = text.trim();
@@ -149,9 +171,10 @@ export function ChatView() {
       lastSentRef.current = trimmed;
       setChatError(null);
       setUsedExtra((n) => n + 1);
-      void sendMessage({ text: trimmed });
+      if (pausedRef.current) void sendToAnalyst(trimmed);
+      else void sendMessage({ text: trimmed });
     },
-    [sendMessage],
+    [sendMessage, sendToAnalyst],
   );
 
   const submit = useCallback(() => {
@@ -219,7 +242,6 @@ export function ChatView() {
 
   let disabledReason: string | undefined;
   if (limitReached) disabledReason = "Limite de mensagens da sessão atingido.";
-  else if (paused) disabledReason = "Um analista está com a conversa. Aguarde o retorno dele.";
 
   return (
     <div className="mx-auto flex h-full w-full max-w-[780px] flex-col">
@@ -245,7 +267,7 @@ export function ChatView() {
           value={input}
           onChange={setInput}
           onSend={submit}
-          disabled={snapshot === null || limitReached || paused || busy}
+          disabled={snapshot === null || limitReached || busy}
           {...(disabledReason ? { disabledReason } : {})}
         />
         <SessionCounter used={used} limit={limit} />
