@@ -54,6 +54,11 @@ function renderMessage(
 }
 
 describe("AgentMessage: mapeamento de partes", () => {
+  it("mostra o texto do agent sem asteriscos de markdown", () => {
+    renderMessage(agent([{ type: "text", text: "Informe o chamado **INC-20311** na retirada." }]));
+    expect(screen.getByText("Informe o chamado INC-20311 na retirada.")).toBeInTheDocument();
+  });
+
   it("tool-get_ticket vira TicketCard com prazo e SLA", () => {
     renderMessage(
       agent([

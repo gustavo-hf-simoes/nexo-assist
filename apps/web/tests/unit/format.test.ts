@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDue, formatListTime, formatShortDate, handoffReasonLabel, initialsOf } from "@/lib/format";
+import { formatDue, formatListTime, formatShortDate, handoffReasonLabel, initialsOf, plainText } from "@/lib/format";
 
 describe("format", () => {
   it("prazo no mesmo dia mostra só o horário em America/Sao_Paulo", () => {
@@ -26,5 +26,12 @@ describe("format", () => {
     expect(handoffReasonLabel("critical")).toBe("caso crítico");
     expect(handoffReasonLabel("low_confidence")).toBe("o assistente não teve segurança");
     expect(handoffReasonLabel("desconhecido")).toBeNull();
+  });
+
+  it("plainText tira a marcação de markdown que o chat mostraria crua", () => {
+    expect(plainText("Mencione o chamado **INC-20311** na TI.")).toBe("Mencione o chamado INC-20311 na TI.");
+    expect(plainText("## Próximos passos\n- reinicie o notebook\n* abra a VPN")).toBe("Próximos passos\n• reinicie o notebook\n• abra a VPN");
+    expect(plainText("rode `ipconfig /flushdns` e __tente__ de novo")).toBe("rode ipconfig /flushdns e tente de novo");
+    expect(plainText("2 * 3 = 6, sem marcação")).toBe("2 * 3 = 6, sem marcação");
   });
 });

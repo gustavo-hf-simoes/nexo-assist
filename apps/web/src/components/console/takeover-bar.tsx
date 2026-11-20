@@ -27,7 +27,7 @@ export function TakeoverBar({ state, employeeFirstName, assignedAnalystName, min
     subtitle = "Agent pausado";
   } else if (state === "agent") {
     title = `O agent está atendendo ${employeeFirstName}`;
-    subtitle = "Você acompanha a conversa; ela chega até você se o agent pedir ajuda";
+    subtitle = "Você acompanha a conversa e pode assumir o atendimento a qualquer momento";
   } else {
     title = "Conversa encerrada";
     subtitle = "Não é possível enviar mensagens";
@@ -53,7 +53,7 @@ export function TakeoverBar({ state, employeeFirstName, assignedAnalystName, min
             Devolver ao agent
           </Button>
         ) : null}
-        {state === "waiting_analyst" ? (
+        {state === "waiting_analyst" || state === "agent" ? (
           <Button disabled={busy} onClick={onAssume}>
             Assumir atendimento
           </Button>

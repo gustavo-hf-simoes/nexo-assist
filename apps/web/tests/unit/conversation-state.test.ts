@@ -11,6 +11,7 @@ describe("transition", () => {
   it.each([
     ["agent", handoff, "waiting_analyst"],
     ["waiting_analyst", assume, "analyst"],
+    ["agent", assume, "analyst"],
     ["analyst", back, "agent"],
     ["waiting_analyst", back, "agent"],
     ["agent", close, "closed"],
@@ -21,7 +22,7 @@ describe("transition", () => {
   });
 
   it.each([
-    ["agent", assume],
+    ["analyst", assume],
     ["analyst", handoff],
     ["agent", back],
     ["closed", handoff],

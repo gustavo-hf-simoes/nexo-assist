@@ -28,11 +28,19 @@ describe("TakeoverBar", () => {
     expect(screen.getByRole("button", { name: "Encerrar conversa" })).toBeInTheDocument();
   });
 
-  it("conversa de outro analista, agent e encerrada ficam só leitura", () => {
+  it("com o agent: oferece assumir, sem devolver nem encerrar", () => {
+    const onAssume = vi.fn();
+    render(<TakeoverBar {...bar} state="agent" onAssume={onAssume} />);
+    expect(screen.getByText(/O agent está atendendo Ana/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Devolver ao agent" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Encerrar conversa" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Assumir atendimento" }));
+    expect(onAssume).toHaveBeenCalledOnce();
+  });
+
+  it("conversa de outro analista e encerrada ficam só leitura", () => {
     const { rerender } = render(<TakeoverBar {...bar} state="analyst" assignedAnalystName="Júlia Castro" />);
     expect(screen.getByText(/Em atendimento com Júlia Castro/)).toBeInTheDocument();
-    expect(screen.queryByRole("button")).toBeNull();
-    rerender(<TakeoverBar {...bar} state="agent" />);
     expect(screen.queryByRole("button")).toBeNull();
     rerender(<TakeoverBar {...bar} state="closed" />);
     expect(screen.queryByRole("button")).toBeNull();

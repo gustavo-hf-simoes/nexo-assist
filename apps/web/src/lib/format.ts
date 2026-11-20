@@ -62,3 +62,14 @@ const HANDOFF_REASON_LABELS: Readonly<Record<string, string>> = {
 export function handoffReasonLabel(reason: string): string | null {
   return HANDOFF_REASON_LABELS[reason] ?? null;
 }
+
+// O chat mostra o texto como está; o modelo às vezes escreve markdown mesmo pedindo texto simples.
+// Tira negrito, código, títulos e marcadores de lista. Um asterisco solto, como em "2 * 3", fica.
+export function plainText(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/__(.+?)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^(\s*)[-*]\s+/gm, "$1• ");
+}

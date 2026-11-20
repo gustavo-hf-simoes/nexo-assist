@@ -236,6 +236,12 @@ describe("API do console do analista (Postgres real)", () => {
       expect((await rowOf(CARLA_CONV))?.state).toBe("closed");
     });
 
+    it("agent: qualquer analista assume sem transferência; o segundo leva 409", async () => {
+      expect((await call(assume.POST, tokens.julia, CARLA_CONV)).status).toBe(200);
+      expect(await rowOf(CARLA_CONV)).toMatchObject({ state: "analyst", assignedAnalystId: "julia.castro" });
+      expect((await call(assume.POST, tokens.rafael, CARLA_CONV)).status).toBe(409);
+    });
+
     // Reproduz a janela: a linha fica travada por outra transação; a chamada da Júlia espera no lock enquanto o
     // Rafael assume (e commita). Quando a da Júlia prossegue, enxerga o estado novo e é recusada.
     async function interleaved(run: Handler) {
