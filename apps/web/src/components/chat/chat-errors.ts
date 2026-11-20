@@ -23,7 +23,7 @@ export function classifyChatError(error: unknown): ClassifiedChatError {
   const body = parseJson(raw);
   if (body) {
     if (typeof body["state"] === "string") {
-      return { kind: "paused", message: "Um analista assumiu a conversa. O assistente não responde mais por aqui.", retry: false };
+      return { kind: "paused", message: "Um analista assumiu a conversa. Sua mensagem foi entregue a ele, e o assistente não responde por enquanto.", retry: false };
     }
     if (body["error"] === "quota_exceeded") {
       return { kind: "quota", message: "Você atingiu o limite de 30 mensagens desta sessão.", retry: false };
