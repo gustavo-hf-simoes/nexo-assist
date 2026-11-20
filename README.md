@@ -1,6 +1,6 @@
 # Nexo Assist
 
-Assistente de TI em chat. O funcionário descreve o problema, e um agent (Mastra + LLM com tool calling: Groq ou Gemini) abre e acompanha chamados em um serviço de chamados separado. Quando o caso foge do que o agent resolve, a conversa passa para um analista humano, que atende pelo console.
+Assistente de TI em chat ([demo](https://nexo-assist-amber.vercel.app)). O funcionário descreve o problema, e um agent (Mastra + LLM com tool calling: Groq ou Gemini) abre e acompanha chamados em um serviço de chamados separado. Quando o caso foge do que o agent resolve, a conversa passa para um analista humano, que atende pelo console.
 
 ## Como rodar
 
@@ -47,6 +47,8 @@ O `docker-compose.yml` publica o Postgres em `${POSTGRES_PORT:-5432}`, e as URLs
 | `bash .github/scripts/test-hooks.sh` e `bash .github/scripts/check-forbidden-terms.sh` | Checagens da esteira |
 
 ## Deploy
+
+**Demo:** https://nexo-assist-amber.vercel.app. Entre como `ana.souza@nexo.com.br` (funcionária) ou `rafael.lima@nexo.com.br` (analista), com qualquer senha não vazia. Use duas janelas, uma delas anônima, para ver o chat e o console ao mesmo tempo.
 
 Produção na Vercel (web e serviço de chamados em projetos separados) com Postgres no Neon, publicada por GitHub Actions depois que a CI passa na `main` (`.github/workflows/deploy.yml`). Topologia, segredos e trade-offs em [docs/deploy.md](docs/deploy.md).
 
