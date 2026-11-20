@@ -1,4 +1,4 @@
-import { isOpenStatus, type TicketDto } from "@nexo/domain";
+import { isOpenStatus, PRIORITY_LABEL, type TicketDto } from "@nexo/domain";
 import { STATUS_LABEL, statusTone } from "@/components/chat/status-labels";
 import { StatusDot } from "@/components/ui/status-dot";
 import { formatShortDate } from "@/lib/format";
@@ -56,7 +56,7 @@ export function EmployeeTicketsPanel({ employeeFirstName, tickets, error, linked
               </div>
               <p className="mt-1 text-[15px] font-semibold text-ink">{linked.title}</p>
               <p className="text-[13px] text-muted">
-                {linked.category} · prioridade {linked.priority}
+                {linked.category} · prioridade {PRIORITY_LABEL[linked.priority].toLowerCase()}
               </p>
             </div>
           </section>

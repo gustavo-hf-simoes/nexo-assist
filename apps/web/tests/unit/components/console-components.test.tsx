@@ -120,4 +120,24 @@ describe("EmployeeTicketsPanel", () => {
     expect(screen.getByText("Chamados da Ana")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("Não consegui carregar os chamados agora.");
   });
+
+  it("chamado da conversa mostra a prioridade com acento", () => {
+    const ticket = {
+      code: "INC-20311",
+      type: "INC" as const,
+      category: "Hardware" as const,
+      priority: "media" as const,
+      status: "aguardando_analista" as const,
+      title: "Notebook lento após atualização do Windows",
+      description: "Lento desde a atualização.",
+      affected: "individual" as const,
+      requesterId: "ana.souza",
+      createdAt: "2026-11-15T13:00:00.000Z",
+      updatedAt: "2026-11-15T13:00:00.000Z",
+      lastSupportUpdateAt: null,
+      resolvedAt: null,
+    };
+    render(<EmployeeTicketsPanel employeeFirstName="Ana" tickets={[ticket]} error={null} linkedTicketCode="INC-20311" />);
+    expect(screen.getByText("Hardware · prioridade média")).toBeInTheDocument();
+  });
 });
