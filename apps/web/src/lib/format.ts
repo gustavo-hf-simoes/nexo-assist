@@ -50,3 +50,15 @@ export function summarizeValue(value: unknown, max = 140): string {
 export function formatListTime(iso: string, now: Date = new Date()): string {
   return dayKeyFormat.format(new Date(iso)) === dayKeyFormat.format(now) ? formatTime(iso) : formatShortDate(iso);
 }
+
+// Motivo da transferência como o funcionário e o analista leem; o código interno não aparece na tela.
+const HANDOFF_REASON_LABELS: Readonly<Record<string, string>> = {
+  user_request: "pedido do funcionário",
+  critical: "caso crítico",
+  overdue: "prazo vencido",
+  low_confidence: "o assistente não teve segurança",
+};
+
+export function handoffReasonLabel(reason: string): string | null {
+  return HANDOFF_REASON_LABELS[reason] ?? null;
+}

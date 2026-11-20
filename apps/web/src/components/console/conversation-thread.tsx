@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { textOf } from "@/components/chat/chat-parts";
 import { toChatMessage } from "@/components/chat/chat-types";
-import { formatTime } from "@/lib/format";
+import { formatTime, handoffReasonLabel } from "@/lib/format";
 import type { ConsoleDetail } from "@/server/conversations/console-queries";
 import type { UiMessage } from "@/server/conversations/ui-messages";
 import { DecisionInline } from "./decision-inline";
@@ -74,7 +74,7 @@ export function ConversationThread({ detail }: { detail: ConsoleDetail }) {
           <section aria-label="Resumo da transferência" className="rounded-xl border border-warn/40 bg-warn/10 px-4 py-3 text-[13.5px] text-warn-ink">
             <p className="font-semibold">Resumo da transferência</p>
             {handoff.summary ? <p className="mt-1 text-ink-soft">{handoff.summary}</p> : null}
-            {handoff.reason ? <p className="mt-1 text-[13px] text-ink-soft">Motivo: {handoff.reason}</p> : null}
+            {handoff.reason ? <p className="mt-1 text-[13px] text-ink-soft">Motivo: {handoffReasonLabel(handoff.reason) ?? handoff.reason}</p> : null}
             {handoff.trace ? (
               <div className="mt-2">
                 <DecisionInline trace={handoff.trace} label="Por que transferiu" />

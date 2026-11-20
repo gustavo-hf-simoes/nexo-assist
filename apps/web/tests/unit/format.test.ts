@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDue, formatListTime, formatShortDate, initialsOf } from "@/lib/format";
+import { formatDue, formatListTime, formatShortDate, handoffReasonLabel, initialsOf } from "@/lib/format";
 
 describe("format", () => {
   it("prazo no mesmo dia mostra só o horário em America/Sao_Paulo", () => {
@@ -19,5 +19,12 @@ describe("format", () => {
     const now = new Date("2026-11-18T14:00:00.000Z");
     expect(formatListTime("2026-11-18T12:05:00.000Z", now)).toBe("09:05");
     expect(formatListTime("2026-11-16T12:05:00.000Z", now)).toBe("16 nov");
+  });
+  it("motivo da transferência em português, sem mostrar o código interno", () => {
+    expect(handoffReasonLabel("overdue")).toBe("prazo vencido");
+    expect(handoffReasonLabel("user_request")).toBe("pedido do funcionário");
+    expect(handoffReasonLabel("critical")).toBe("caso crítico");
+    expect(handoffReasonLabel("low_confidence")).toBe("o assistente não teve segurança");
+    expect(handoffReasonLabel("desconhecido")).toBeNull();
   });
 });
