@@ -126,17 +126,17 @@ Rodada completa em 19/11/2026 com a cadeia gratuita da Groq (`gpt-oss-120b` → 
 | 07: senha do SAP bloqueada de novo | não montou o rascunho de reabertura nessa rodada (passou numa rodada isolada antes) | regra: reabrir sem pedir confirmação antes |
 | 08: Outlook parou de sincronizar | categoria `Software` em vez de `E-mail` | exemplos por categoria nas regras |
 
-Depois dos ajustes, o cenário 05 passou numa rodada isolada. Os cenários 07 e 08 ficaram sem nova rodada, porque a cota diária gratuita dos três modelos acabou no mesmo dia. **A taxa final depois dos ajustes ainda não foi medida.** As rodadas anteriores, com regras menos explícitas, deram 42% a 67% por modelo. A maior parte das falhas vinha de regras implícitas nas instruções, não do modelo.
+Depois dos ajustes, o cenário 05 passou numa rodada isolada. Os cenários 07 e 08 não foram medidos de novo. **A taxa final depois dos ajustes não foi medida, e foi uma escolha.** As rodadas anteriores, com regras menos explícitas, deram 42% a 67% por modelo. A maior parte das falhas vinha de regras implícitas nas instruções, não do modelo.
 
-Para rodar:
+**Por que o eval parou aqui.** O PRD não pede eval: ele pede "uso consciente do modelo, pensando em custo por conversa". O eval é uma ferramenta de desenvolvimento, usada para calibrar as instruções. Cada rodada completa gasta cerca de 117 mil tokens (12 cenários x 9.773), mais de metade da cota diária gratuita de um modelo da Groq. Como a chave é a mesma da demo, rodar o eval tira cota de quem está testando o app. Prioridade: a cota fica para a avaliação manual e para a demo. O código continua no repositório, mas o eval não roda no CI, no deploy nem em nenhum ambiente publicado; só roda quando alguém executa o comando abaixo à mão.
+
+Para rodar (de preferência com uma chave separada da demo):
 
 ```bash
 npm run eval -w @nexo/web
 ```
 
-O comando falha logo, com mensagem em pt-BR, se faltar a chave de algum provedor da cadeia. Com as chaves, ele roda os 12 cenários e grava no `apps/web/evals/report.md` a taxa de acerto, os tokens e o tempo por cenário. O limite de aprovação é `EVAL_MIN_PASS_RATE` (padrão 0.9). A opção `--only <trecho>` roda só os cenários cujo nome contém o trecho e não grava o relatório. Um 429 por limite de minuto espera 60 s e tenta de novo, até 3 vezes; um limite diário não é repetido.
-
-O eval **não roda no CI**: exige chave real, consome a cota do provedor e varia entre execuções. Ele deve ser rodado manualmente antes de mudar `instructions.ts` ou o modelo. Ele usa a mesma cota gratuita da produção, então não convém rodá-lo várias vezes no dia.
+O comando falha logo, com mensagem em pt-BR, se faltar a chave de algum provedor da cadeia. Com as chaves, ele roda os 12 cenários e grava no `apps/web/evals/report.md` a taxa de acerto, os tokens e o tempo por cenário. O limite de aprovação é `EVAL_MIN_PASS_RATE` (padrão 0.9). A opção `--only <trecho>` roda só os cenários cujo nome contém o trecho e não grava o relatório, o que custa uma fração da rodada completa. Um 429 por limite de minuto espera 60 s e tenta de novo, até 3 vezes; um limite diário não é repetido.
 
 ## Modelo e custo
 
@@ -158,10 +158,9 @@ O agent usa uma cadeia de modelos do plano gratuito da Groq, sem cartão, config
 
 ## O que eu faria com mais tempo
 
-- Rodar o eval com a chave real, registrar o relatório e ajustar `instructions.ts` com base nos cenários que falharem.
+- Medir a taxa final do eval com uma chave só para ele, sem tocar na cota da demo.
 - Medir tokens e custo reais por conversa e trocar a estimativa por dados.
 - Autenticação real (SSO) e rate limit compartilhado (Redis ou banco).
 - Calendário de feriados no cálculo de SLA.
 - WebSocket ou SSE no lugar do polling.
-- Rodar o eval em um job manual do CI, com a chave em segredo.
 - Um comando único que suba os dois serviços de desenvolvimento.
