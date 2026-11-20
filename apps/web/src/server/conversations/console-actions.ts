@@ -45,7 +45,7 @@ export async function handleConsoleRoute(
 // Regra de posse (conferida dentro da transação da transição, com a linha travada):
 // - `analyst`: só o responsável devolve ou encerra (outro analista recebe 403);
 // - `waiting_analyst`: ninguém é dono ainda, qualquer analista pode devolver, encerrar ou assumir;
-// - `agent`: o console pode encerrar (devolver não faz sentido e dá 409 pela máquina de estados);
+// - `agent`: qualquer analista pode assumir ou encerrar (devolver não faz sentido e dá 409 pela máquina de estados);
 // - `closed`: 409 pela máquina de estados.
 // Assumir em `analyst` também é 409 (a transição não existe), inclusive para o segundo analista.
 export function ownerRule(analystId: string, event: ConversationEvent): (current: ConversationRow) => void {

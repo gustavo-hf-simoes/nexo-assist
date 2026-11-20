@@ -23,7 +23,8 @@ export function transition(state: ConversationState, event: ConversationEvent): 
       if (state === "agent") return "waiting_analyst";
       break;
     case "assume":
-      if (state === "waiting_analyst") return "analyst";
+      // O analista pode assumir uma conversa transferida ou intervir numa que está com o agent.
+      if (state === "waiting_analyst" || state === "agent") return "analyst";
       break;
     case "return_to_agent":
       if (state === "analyst" || state === "waiting_analyst") return "agent";
